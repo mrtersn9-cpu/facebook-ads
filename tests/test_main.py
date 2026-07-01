@@ -46,9 +46,37 @@ def test_kill_switch_off_still_reaches_fetch(monkeypatch, tmp_path):
     assert called["fetch"] is True
 
 
+def test_run_once_checks_token_expiry_before_fetching(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config.Config, "KILL_SWITCH", False)
+    monkeypatch.setattr(config.Config, "META_MOCK_MODE", True)
+    monkeypatch.setattr(config.Config, "ANTHROPIC_API_KEY", "fake")
+
+    called = {"expiry_checked": False}
+    monkeypatch.setattr(main, "check_token_expiry", lambda: called.__setitem__("expiry_checked", True))
+    monkeypatch.setattr(main, "fetch_adset_performance", lambda: [])
+
+    main.run_once()
+
+    assert called["expiry_checked"] is True
+
+
+def test_kill_switch_skips_token_expiry_check(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config.Config, "KILL_SWITCH", True)
+
+    def boom():
+        raise AssertionError("KILL_SWITCH aktifken token expiry kontrolü yapılmamalı")
+
+    monkeypatch.setattr(main, "check_token_expiry", boom)
+
+    main.run_once()  # patlamamalı
+
+
 def test_guardrail_violation_always_notifies(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(config.Config, "KILL_SWITCH", False)
+    monkeypatch.setattr(main, "check_token_expiry", lambda: None)
     monkeypatch.setattr(main, "fetch_adset_performance", lambda: [{"adset_id": "1", "spend": 10, "daily_budget": 5}])
     monkeypatch.setattr(main, "get_action_recommendations", lambda snapshot: [])
 

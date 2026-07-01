@@ -4,12 +4,13 @@ Bu testler gerçek Meta API'ye hiç dokunmaz; requests.get/post monkeypatch
 ile sahtelenir.
 """
 import json
+import time
 
 import pytest
 
 import config
 import meta_client
-from meta_client import MetaClient
+from meta_client import MetaClient, check_token_expiry
 
 
 class FakeResponse:
@@ -132,3 +133,68 @@ def test_pagination_merges_all_pages(real_mode, monkeypatch):
 
     assert [c["id"] for c in campaigns] == ["1", "2"]
     assert calls["count"] == 2
+
+
+def test_check_token_expiry_noop_in_mock_mode(monkeypatch):
+    monkeypatch.setattr(config.Config, "META_MOCK_MODE", True)
+
+    def boom(*a, **k):
+        raise AssertionError("Mock modda debug_token çağrılmamalı")
+
+    monkeypatch.setattr(meta_client.requests, "get", boom)
+
+    check_token_expiry()  # patlamamalı
+
+
+def test_check_token_expiry_warns_when_close_to_expiring(real_mode, monkeypatch, caplog):
+    monkeypatch.setattr(config.Config, "TOKEN_EXPIRY_WARN_DAYS", 7)
+    soon = time.time() + 2 * 86400  # 2 gün sonra
+
+    def fake_get(url, params=None, timeout=None):
+        return FakeResponse(200, {"data": {"expires_at": soon}})
+
+    monkeypatch.setattr(meta_client.requests, "get", fake_get)
+
+    with caplog.at_level("WARNING"):
+        check_token_expiry()
+
+    assert any("sona erecek" in record.message for record in caplog.records)
+
+
+def test_check_token_expiry_silent_when_far_from_expiring(real_mode, monkeypatch, caplog):
+    monkeypatch.setattr(config.Config, "TOKEN_EXPIRY_WARN_DAYS", 7)
+    far_future = time.time() + 90 * 86400
+
+    def fake_get(url, params=None, timeout=None):
+        return FakeResponse(200, {"data": {"expires_at": far_future}})
+
+    monkeypatch.setattr(meta_client.requests, "get", fake_get)
+
+    with caplog.at_level("WARNING"):
+        check_token_expiry()
+
+    assert caplog.records == []
+
+
+def test_check_token_expiry_silent_when_never_expires(real_mode, monkeypatch, caplog):
+    def fake_get(url, params=None, timeout=None):
+        return FakeResponse(200, {"data": {"expires_at": 0}})
+
+    monkeypatch.setattr(meta_client.requests, "get", fake_get)
+
+    with caplog.at_level("WARNING"):
+        check_token_expiry()
+
+    assert caplog.records == []
+
+
+def test_check_token_expiry_logs_and_swallows_api_error(real_mode, monkeypatch, caplog):
+    def fake_get(url, params=None, timeout=None):
+        return FakeResponse(400, {"error": {"code": 190, "message": "Invalid token"}})
+
+    monkeypatch.setattr(meta_client.requests, "get", fake_get)
+
+    with caplog.at_level("WARNING"):
+        check_token_expiry()  # patlamamalı
+
+    assert any("başarısız" in record.message for record in caplog.records)

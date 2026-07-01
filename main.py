@@ -15,6 +15,7 @@ from decision_engine import get_action_recommendations
 from guardrails import GuardrailViolation, apply_guardrails
 from action_executor import execute_actions, install_signal_handlers
 from logger import log_action
+from meta_client import check_token_expiry
 from notifier import notify_guardrail_violation, notify_run_summary
 
 logging.basicConfig(
@@ -25,11 +26,14 @@ logger = logging.getLogger(__name__)
 
 
 def run_once() -> None:
+    logger.info("heartbeat: run_once başlıyor")
+
     if Config.KILL_SWITCH:
         print("KILL_SWITCH aktif; hiçbir dış çağrı yapılmadan çıkılıyor.")
         return
 
     Config.validate()
+    check_token_expiry()
 
     snapshot = fetch_adset_performance()
     if not snapshot:

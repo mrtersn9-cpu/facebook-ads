@@ -53,6 +53,13 @@ class Config:
     # --- Bildirim (opsiyonel) ---
     SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL", "")
 
+    # --- Log rotasyonu (FAZ 9) ---
+    ACTIONS_LOG_MAX_BYTES = _int("ACTIONS_LOG_MAX_BYTES", 10 * 1024 * 1024)
+    ACTIONS_LOG_BACKUP_COUNT = _int("ACTIONS_LOG_BACKUP_COUNT", 5)
+
+    # --- Token expiry uyarısı (FAZ 9) ---
+    TOKEN_EXPIRY_WARN_DAYS = _int("TOKEN_EXPIRY_WARN_DAYS", 7)
+
     # --- Kademeli canlıya alma (FAZ 8) ---
     # Boşsa hesaptaki tüm aktif ad set'ler kapsam dahilindedir. Doldurulursa
     # sadece adında bu alt dizeyi (case-insensitive) içeren kampanyalardaki

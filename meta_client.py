@@ -4,12 +4,15 @@ FAZ 1: mock mod (META_MOCK_MODE), pagination takibi ve auth/rate-limit hata
 sınıflandırması eklendi.
 """
 import json
+import logging
 import os
 import time
 
 import requests
 
 from config import Config
+
+logger = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT = 15
 MAX_RETRIES = 3
@@ -161,3 +164,31 @@ class MetaClient:
 
     def activate_entity(self, entity_id: str) -> dict:
         return self._post(entity_id, {"status": "ACTIVE"})
+
+
+def check_token_expiry(client: MetaClient | None = None) -> None:
+    """/debug_token ile access token'ın süresinin dolmasına az kaldıysa
+    erken uyarı loglar. Best-effort: mock modda veya herhangi bir hata
+    durumunda sessizce çıkar, ana pipeline'ı asla engellemez."""
+    if Config.META_MOCK_MODE:
+        return
+
+    client = client or MetaClient()
+    try:
+        payload = client._get("debug_token", {"input_token": client.access_token})
+    except MetaAPIError as exc:
+        logger.warning("Token expiry kontrolü başarısız oldu: %s", exc)
+        return
+
+    data = payload.get("data", {})
+    expires_at = data.get("expires_at")
+    if not expires_at:
+        return  # 0/None: süresiz (system user) token
+
+    remaining_seconds = expires_at - time.time()
+    remaining_days = remaining_seconds / 86400
+    if remaining_days <= Config.TOKEN_EXPIRY_WARN_DAYS:
+        logger.warning(
+            "Meta access token %.1f gün içinde sona erecek! Token'ın yenilenmesi gerekiyor.",
+            remaining_days,
+        )
