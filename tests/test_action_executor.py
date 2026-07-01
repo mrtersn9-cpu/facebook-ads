@@ -4,6 +4,7 @@ doğrular. Gerçek Meta API'ye hiç dokunmaz."""
 import json
 
 import config
+import action_executor
 from action_executor import execute_actions
 from meta_client import MetaAPIError
 
@@ -88,3 +89,21 @@ def test_partial_failures_continue_and_are_all_reported(monkeypatch, tmp_path):
     assert statuses["ok-2"] == "applied"
     assert statuses["fail-2"] == "error"
     assert statuses["ok-3"] == "applied"
+
+
+def test_shutdown_flag_stops_before_next_action_but_keeps_prior_results(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config.Config, "DRY_RUN", True)
+    monkeypatch.setattr(action_executor, "_shutdown_requested", True)
+
+    actions = [
+        {"adset_id": "1", "action": "pause", "reason": "test"},
+        {"adset_id": "2", "action": "pause", "reason": "test"},
+    ]
+
+    summary = execute_actions(actions, client=ExplodingClient())
+
+    assert summary == {"applied": 0, "dry_run": 0, "errors": 0}
+    logged = [json.loads(line) for line in (tmp_path / "logs" / "actions.jsonl").read_text(encoding="utf-8").strip().splitlines()]
+    assert len(logged) == 1
+    assert logged[0]["status"] == "shutdown"

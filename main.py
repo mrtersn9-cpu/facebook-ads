@@ -13,16 +13,21 @@ from config import Config
 from data_fetcher import fetch_adset_performance
 from decision_engine import get_action_recommendations
 from guardrails import GuardrailViolation, apply_guardrails
-from action_executor import execute_actions
+from action_executor import execute_actions, install_signal_handlers
+from logger import log_action
 
 logging.basicConfig(
     level=getattr(logging, Config.LOG_LEVEL.upper(), logging.INFO),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
-from logger import log_action
+logger = logging.getLogger(__name__)
 
 
 def run_once() -> None:
+    if Config.KILL_SWITCH:
+        print("KILL_SWITCH aktif; hiçbir dış çağrı yapılmadan çıkılıyor.")
+        return
+
     Config.validate()
 
     snapshot = fetch_adset_performance()
@@ -66,17 +71,31 @@ def run_once() -> None:
     )
 
 
+def _safe_run_once() -> None:
+    """Scheduler döngüsünde çağrılır: run_once() hata fırlatsa bile scheduler
+    process'i çökmez, hatayı loglayıp bir sonraki çalıştırmayı bekler."""
+    try:
+        run_once()
+    except Exception:
+        logger.exception(
+            "run_once() sırasında beklenmeyen hata oluştu; scheduler bir "
+            "sonraki çalıştırmayı bekleyecek."
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Meta Ads AI Agent")
     parser.add_argument("--once", action="store_true", help="Boru hattını bir kez çalıştır ve çık.")
     args = parser.parse_args()
+
+    install_signal_handlers()
 
     if args.once:
         run_once()
         return
 
     scheduler = BlockingScheduler()
-    scheduler.add_job(run_once, "interval", hours=Config.RUN_INTERVAL_HOURS)
+    scheduler.add_job(_safe_run_once, "interval", hours=Config.RUN_INTERVAL_HOURS)
     print(f"Scheduler başlatıldı: her {Config.RUN_INTERVAL_HOURS} saatte bir çalışacak.")
     scheduler.start()
 

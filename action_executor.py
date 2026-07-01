@@ -3,14 +3,34 @@
 Sadece guardrails.apply_guardrails()'ten onaylanmış aksiyonlar buraya
 gelmelidir; bu modül kendi başına ek bir yetki kontrolü yapmaz.
 """
+import signal
+
 from config import Config
 from logger import log_action
 from meta_client import MetaClient, MetaAPIError
+
+_shutdown_requested = False
+
+
+def _handle_shutdown_signal(signum, frame) -> None:
+    global _shutdown_requested
+    _shutdown_requested = True
+
+
+def install_signal_handlers() -> None:
+    """SIGINT/SIGTERM alındığında mevcut aksiyonun bitirilip yenisinin
+    başlatılmamasını sağlayan bayrağı kurar. main.py girişinde bir kere
+    çağrılmalı."""
+    signal.signal(signal.SIGINT, _handle_shutdown_signal)
+    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
 
 
 def execute_actions(actions: list[dict], client: MetaClient | None = None) -> dict:
     """Onaylanmış aksiyonları sırayla uygular; bir aksiyon hata verse bile
     diğerlerine devam eder. Her sonucu logs/actions.jsonl'e yazar.
+
+    Bir kapatma sinyali (SIGINT/SIGTERM) alındığında mevcut aksiyon
+    bitirilir ama yenisi başlatılmaz.
 
     Dönüş: {"applied": n, "dry_run": n, "errors": n}
     """
@@ -18,6 +38,17 @@ def execute_actions(actions: list[dict], client: MetaClient | None = None) -> di
     summary = {"applied": 0, "dry_run": 0, "errors": 0}
 
     for action in actions:
+        if _shutdown_requested:
+            log_action(
+                {
+                    "adset_id": None,
+                    "action": "run_interrupted",
+                    "status": "shutdown",
+                    "reason": "Kapatma sinyali alındı; kalan aksiyonlar işlenmedi.",
+                }
+            )
+            break
+
         adset_id = action.get("adset_id")
         action_type = action.get("action")
         reason = action.get("reason", "")
