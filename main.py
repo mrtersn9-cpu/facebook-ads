@@ -15,6 +15,7 @@ from decision_engine import get_action_recommendations
 from guardrails import GuardrailViolation, apply_guardrails
 from action_executor import execute_actions, install_signal_handlers
 from logger import log_action
+from notifier import notify_guardrail_violation, notify_run_summary
 
 logging.basicConfig(
     level=getattr(logging, Config.LOG_LEVEL.upper(), logging.INFO),
@@ -49,6 +50,7 @@ def run_once() -> None:
                 "reason": str(exc),
             }
         )
+        notify_guardrail_violation(str(exc))
         return
 
     for r in rejected:
@@ -69,6 +71,7 @@ def run_once() -> None:
         f"uygulanan={summary['applied']}, dry_run={summary['dry_run']}, "
         f"hata={summary['errors']}"
     )
+    notify_run_summary(summary, len(actions), len(rejected))
 
 
 def _safe_run_once() -> None:
