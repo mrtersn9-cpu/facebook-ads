@@ -1,0 +1,44 @@
+"""Aktif ad set'lerin performans verisini toplayıp karar motoru için bir
+snapshot (özet liste) üretir."""
+from meta_client import MetaClient
+
+
+def _extract_purchases(actions: list[dict]) -> int:
+    for action in actions or []:
+        if action.get("action_type") == "purchase":
+            return int(float(action.get("value", 0)))
+    return 0
+
+
+def fetch_adset_performance(client: MetaClient | None = None) -> list[dict]:
+    """Aktif (ACTIVE) ad set'ler için harcama/performans snapshot'ı döner.
+
+    Her eleman: adset_id, name, campaign_id, daily_budget, spend, purchases.
+    """
+    client = client or MetaClient()
+    snapshot = []
+
+    for adset in client.get_adsets():
+        if adset.get("status") != "ACTIVE":
+            continue
+
+        insights = client.get_insights(adset["id"])
+        if not insights:
+            continue
+
+        row = insights[0]
+        spend = float(row.get("spend", 0) or 0)
+        purchases = _extract_purchases(row.get("actions", []))
+
+        snapshot.append(
+            {
+                "adset_id": adset["id"],
+                "name": adset.get("name", ""),
+                "campaign_id": adset.get("campaign_id", ""),
+                "daily_budget": adset.get("daily_budget"),
+                "spend": spend,
+                "purchases": purchases,
+            }
+        )
+
+    return snapshot
