@@ -198,3 +198,92 @@ def test_check_token_expiry_logs_and_swallows_api_error(real_mode, monkeypatch, 
         check_token_expiry()  # patlamamalı
 
     assert any("başarısız" in record.message for record in caplog.records)
+
+
+# --- FAZ 12: yeni kampanya/ad set/creative/reklam oluşturma ---
+
+
+def test_create_campaign_mock_mode_is_always_paused(monkeypatch):
+    monkeypatch.setattr(config.Config, "META_MOCK_MODE", True)
+    client = MetaClient()
+
+    campaign = client.create_campaign(name="Test Kampanya", objective="OUTCOME_ENGAGEMENT")
+
+    assert campaign["status"] == "PAUSED"
+    assert campaign["id"]
+
+
+def test_create_adset_mock_mode_is_always_paused(monkeypatch):
+    monkeypatch.setattr(config.Config, "META_MOCK_MODE", True)
+    client = MetaClient()
+
+    adset = client.create_adset(campaign_id="c1", name="Test Adset", daily_budget_cents=1000, targeting={})
+
+    assert adset["status"] == "PAUSED"
+
+
+def test_create_ad_mock_mode_is_always_paused(monkeypatch):
+    monkeypatch.setattr(config.Config, "META_MOCK_MODE", True)
+    client = MetaClient()
+
+    ad = client.create_ad(adset_id="a1", creative_id="cr1", name="Test Ad")
+
+    assert ad["status"] == "PAUSED"
+
+
+def test_create_campaign_real_mode_sends_paused_status(real_mode, monkeypatch):
+    captured = {}
+
+    def fake_post(url, data=None, timeout=None):
+        captured.update(data)
+        return FakeResponse(200, {"id": "real_campaign_1"})
+
+    monkeypatch.setattr(meta_client.requests, "post", fake_post)
+
+    client = MetaClient()
+    client.create_campaign(name="Test", objective="OUTCOME_ENGAGEMENT")
+
+    assert captured["status"] == "PAUSED"
+
+
+def test_create_adset_real_mode_sends_paused_status(real_mode, monkeypatch):
+    captured = {}
+
+    def fake_post(url, data=None, timeout=None):
+        captured.update(data)
+        return FakeResponse(200, {"id": "real_adset_1"})
+
+    monkeypatch.setattr(meta_client.requests, "post", fake_post)
+
+    client = MetaClient()
+    client.create_adset(campaign_id="c1", name="Test", daily_budget_cents=1000, targeting={"geo_locations": {}})
+
+    assert captured["status"] == "PAUSED"
+
+
+def test_create_ad_real_mode_sends_paused_status(real_mode, monkeypatch):
+    captured = {}
+
+    def fake_post(url, data=None, timeout=None):
+        captured.update(data)
+        return FakeResponse(200, {"id": "real_ad_1"})
+
+    monkeypatch.setattr(meta_client.requests, "post", fake_post)
+
+    client = MetaClient()
+    client.create_ad(adset_id="a1", creative_id="cr1", name="Test")
+
+    assert captured["status"] == "PAUSED"
+
+
+def test_create_methods_have_no_overridable_status_parameter():
+    client = MetaClient()
+
+    with pytest.raises(TypeError):
+        client.create_campaign(name="x", objective="y", status="ACTIVE")
+
+    with pytest.raises(TypeError):
+        client.create_adset(campaign_id="c1", name="x", daily_budget_cents=1, targeting={}, status="ACTIVE")
+
+    with pytest.raises(TypeError):
+        client.create_ad(adset_id="a1", creative_id="cr1", name="x", status="ACTIVE")

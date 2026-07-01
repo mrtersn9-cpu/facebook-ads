@@ -1,0 +1,108 @@
+"""FAZ 12: campaign_builder.py'nin PAUSED-only zincir oluşturduğunu, kısmi
+başarısızlıklarda temizlik denemeden loglayıp devam ettiğini doğrular.
+Gerçek Meta API'ye hiç dokunmaz."""
+import json
+
+import config
+from campaign_builder import build_campaign_from_creative, build_campaigns_from_creatives
+from meta_client import MetaAPIError
+
+CREATIVE = {
+    "media_id": "m1",
+    "primary_text": "Yeni sezon başladı!",
+    "headline": "Yeni Sezon",
+    "description": "Şimdi keşfet.",
+    "reasoning": "Yüksek engagement.",
+}
+POST = {"id": "m1"}
+
+
+class FakeClient:
+    def __init__(self, fail_at=None):
+        self.fail_at = fail_at
+        self.calls = []
+
+    def create_campaign(self, name, objective):
+        self.calls.append("create_campaign")
+        if self.fail_at == "create_campaign":
+            raise MetaAPIError("campaign failed")
+        return {"id": "camp_1", "status": "PAUSED"}
+
+    def create_adset(self, campaign_id, name, daily_budget_cents, targeting):
+        self.calls.append("create_adset")
+        if self.fail_at == "create_adset":
+            raise MetaAPIError("adset failed")
+        return {"id": "adset_1", "status": "PAUSED"}
+
+    def create_ad_creative(self, name, object_story_id):
+        self.calls.append("create_ad_creative")
+        if self.fail_at == "create_ad_creative":
+            raise MetaAPIError("creative failed")
+        return {"id": "creative_1"}
+
+    def create_ad(self, adset_id, creative_id, name):
+        self.calls.append("create_ad")
+        if self.fail_at == "create_ad":
+            raise MetaAPIError("ad failed")
+        return {"id": "ad_1", "status": "PAUSED"}
+
+
+def test_full_chain_succeeds_and_logs_applied(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    client = FakeClient()
+
+    result = build_campaign_from_creative(CREATIVE, POST, page_id="page1", client=client)
+
+    assert result == {
+        "media_id": "m1",
+        "campaign_id": "camp_1",
+        "adset_id": "adset_1",
+        "creative_id": "creative_1",
+        "ad_id": "ad_1",
+    }
+    logged = json.loads((tmp_path / "logs" / "actions.jsonl").read_text(encoding="utf-8").strip())
+    assert logged["status"] == "applied"
+    assert logged["action"] == "create_campaign_from_creative"
+
+
+def test_failure_midway_logs_partial_ids_and_reraises(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    client = FakeClient(fail_at="create_ad_creative")
+
+    try:
+        build_campaign_from_creative(CREATIVE, POST, page_id="page1", client=client)
+        assert False, "MetaAPIError bekleniyordu"
+    except MetaAPIError:
+        pass
+
+    assert client.calls == ["create_campaign", "create_adset", "create_ad_creative"]
+
+    logged = json.loads((tmp_path / "logs" / "actions.jsonl").read_text(encoding="utf-8").strip())
+    assert logged["status"] == "error"
+    assert logged["details"]["campaign_id"] == "camp_1"
+    assert logged["details"]["adset_id"] == "adset_1"
+    assert "creative_id" not in logged["details"]
+    assert "ad_id" not in logged["details"]
+
+
+def test_batch_continues_after_one_failure(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    calls = {"count": 0}
+
+    class SequencedClient(FakeClient):
+        def create_campaign(self, name, objective):
+            calls["count"] += 1
+            if calls["count"] == 2:
+                raise MetaAPIError("second one fails")
+            return {"id": f"camp_{calls['count']}", "status": "PAUSED"}
+
+    client = SequencedClient()
+    creatives = [{**CREATIVE, "media_id": f"m{i}"} for i in range(3)]
+    posts_by_id = {f"m{i}": {"id": f"m{i}"} for i in range(3)}
+
+    summary = build_campaigns_from_creatives(creatives, posts_by_id, page_id="page1", client=client)
+
+    assert summary["created"] == 2
+    assert summary["errors"] == 1
+    assert len(summary["results"]) == 3

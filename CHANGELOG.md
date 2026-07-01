@@ -69,3 +69,31 @@ ile hiçbir token/secret'ın log satırına yazılmadığı doğrulandı.
 production deployment notları). `RUNBOOK.md` eklendi (yanlış aksiyon, token
 yenileme, guardrail teşhisi, heartbeat kontrolü senaryoları). Bu
 `CHANGELOG.md` başlatıldı.
+
+## FAZ 11 — Instagram gönderi toplama ve creative üretimi
+`ig_client.py` (salt okunur, `IG_MOCK_MODE` destekli), `post_selector.py`
+(engagement rate skorlama + minimum yaş filtresi), `creative_generator.py`
+(Claude ile reklam metni üretimi; organik caption'ın birebir aynısı veya
+şemaya uymayan cevaplar `None` olarak elenir). Bu faz gerçek Meta API'sine
+hiçbir yazma çağrısı yapmaz — sadece öneri üretir. `IG_MOCK_MODE=true` ile
+uçtan uca (Anthropic çağrısı sahtelenerek) doğrulandı.
+
+## FAZ 12 — Otomatik kampanya/reklam oluşturma
+`meta_client.py`'ye `create_campaign`/`create_adset`/`create_ad_creative`/
+`create_ad` eklendi — hiçbirinde `status` parametresi yok, `"PAUSED"` payload'a
+sabit yazılıyor (test: `status="ACTIVE"` geçmeye çalışmak `TypeError`
+veriyor). `creative_guardrails.py`: günlük/run başına kampanya limiti
+(birikimli olarak `logs/actions.jsonl`'den sayılıyor), yasaklı ifade
+taraması, sabit varsayılan ad set bütçesi — hepsi fail-closed.
+`campaign_builder.py` bir zincirde hata olursa temizlik denemeden o ana
+kadarki obje id'lerini loglar; farklı creative'lerin zincirleri
+birbirinden bağımsız işlenir. `run_creative_pipeline.py --once`, ana
+optimizasyon döngüsünden ayrı, isteğe bağlı bir komut. Uçtan uca
+doğrulandı: 4 aday gönderiden 4 creative üretildi, `MAX_NEW_CAMPAIGNS_PER_RUN=1`
+doğru şekilde sadece en yüksek engagement'lı olanı geçirdi, diğer 3'ü
+API'ye hiç dokunmadan reddetti, geçen creative için tam `PAUSED`
+kampanya→ad set→creative→reklam zinciri oluştu ve loglandı.
+
+Gerçek hesapla ilk canlı deneme, FAZ 8'deki gibi, sadece insanın Ads
+Manager'da oluşan `PAUSED` reklamı elle `ACTIVE` yapmasıyla tamamlanmış
+sayılır — bu repodaki otomasyon bunu hiçbir koşulda kendisi yapmaz.

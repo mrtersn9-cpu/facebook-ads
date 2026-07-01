@@ -74,6 +74,9 @@ class Config:
     IG_BUSINESS_ACCOUNT_ID = os.environ.get("IG_BUSINESS_ACCOUNT_ID", "")
     IG_MIN_POST_AGE_HOURS = _float("IG_MIN_POST_AGE_HOURS", 48.0)
     IG_TOP_N_POSTS = _int("IG_TOP_N_POSTS", 5)
+    # IG hesabına bağlı Facebook Page ID'si — object_story_id (Seçenek A)
+    # oluşturmak için gerekli: object_story_id = "{META_PAGE_ID}_{post_id}".
+    META_PAGE_ID = os.environ.get("META_PAGE_ID", "")
 
     # --- Kampanya/reklam oluşturma guardrail'leri (FAZ 12) ---
     MAX_NEW_CAMPAIGNS_PER_RUN = _int("MAX_NEW_CAMPAIGNS_PER_RUN", 1)
@@ -116,6 +119,8 @@ class Config:
                 missing.append("IG_ACCESS_TOKEN (veya META_ACCESS_TOKEN)")
             if not cls.IG_BUSINESS_ACCOUNT_ID:
                 missing.append("IG_BUSINESS_ACCOUNT_ID")
+            if not cls.META_PAGE_ID:
+                missing.append("META_PAGE_ID")
 
         if not cls.ANTHROPIC_API_KEY:
             missing.append("ANTHROPIC_API_KEY")

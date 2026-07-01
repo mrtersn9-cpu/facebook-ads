@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import time
+import uuid
 
 import requests
 
@@ -164,6 +165,79 @@ class MetaClient:
 
     def activate_entity(self, entity_id: str) -> dict:
         return self._post(entity_id, {"status": "ACTIVE"})
+
+    # --- FAZ 12: yeni kampanya/ad set/creative/reklam oluşturma ---
+    #
+    # Değişmez Kural #8: bot tarafından oluşturulan her yeni kampanya/ad
+    # set/reklam her zaman PAUSED durumunda oluşturulur. Bu metotların
+    # HİÇBİRİNDE bir "status" parametresi YOKTUR — PAUSED değeri payload'a
+    # sabit olarak yazılır, dışarıdan hiçbir şekilde override edilemez.
+
+    def create_campaign(self, name: str, objective: str) -> dict:
+        if Config.META_MOCK_MODE:
+            return {
+                "id": f"mock_campaign_{uuid.uuid4().hex[:8]}",
+                "name": name,
+                "objective": objective,
+                "status": "PAUSED",
+            }
+        return self._post(
+            f"act_{self.ad_account_id}/campaigns",
+            {"name": name, "objective": objective, "status": "PAUSED"},
+        )
+
+    def create_adset(self, campaign_id: str, name: str, daily_budget_cents: int, targeting: dict) -> dict:
+        if Config.META_MOCK_MODE:
+            return {
+                "id": f"mock_adset_{uuid.uuid4().hex[:8]}",
+                "campaign_id": campaign_id,
+                "name": name,
+                "daily_budget": daily_budget_cents,
+                "status": "PAUSED",
+            }
+        return self._post(
+            f"act_{self.ad_account_id}/adsets",
+            {
+                "campaign_id": campaign_id,
+                "name": name,
+                "daily_budget": daily_budget_cents,
+                "targeting": json.dumps(targeting),
+                "status": "PAUSED",
+            },
+        )
+
+    def create_ad_creative(self, name: str, object_story_id: str) -> dict:
+        """Seçenek A: var olan organik gönderiyi object_story_id ile reklam
+        creative'i olarak kullanır — görsel/video yeniden yüklenmez."""
+        if Config.META_MOCK_MODE:
+            return {
+                "id": f"mock_creative_{uuid.uuid4().hex[:8]}",
+                "name": name,
+                "object_story_id": object_story_id,
+            }
+        return self._post(
+            f"act_{self.ad_account_id}/adcreatives",
+            {"name": name, "object_story_id": object_story_id},
+        )
+
+    def create_ad(self, adset_id: str, creative_id: str, name: str) -> dict:
+        if Config.META_MOCK_MODE:
+            return {
+                "id": f"mock_ad_{uuid.uuid4().hex[:8]}",
+                "adset_id": adset_id,
+                "creative_id": creative_id,
+                "name": name,
+                "status": "PAUSED",
+            }
+        return self._post(
+            f"act_{self.ad_account_id}/ads",
+            {
+                "adset_id": adset_id,
+                "name": name,
+                "creative": json.dumps({"creative_id": creative_id}),
+                "status": "PAUSED",
+            },
+        )
 
 
 def check_token_expiry(client: MetaClient | None = None) -> None:

@@ -53,3 +53,15 @@ def test_request_exception_is_swallowed(monkeypatch):
     monkeypatch.setattr(notifier.requests, "post", raise_error)
 
     notifier.notify_run_summary({"applied": 0, "dry_run": 0, "errors": 0}, 0, 0)  # patlamamalı
+
+
+def test_new_campaign_pending_review_includes_ads_manager_link(monkeypatch):
+    monkeypatch.setattr(config.Config, "SLACK_WEBHOOK_URL", "https://hooks.slack.test/fake")
+    calls = []
+    monkeypatch.setattr(notifier.requests, "post", lambda url, json=None, timeout=None: calls.append(json))
+
+    notifier.notify_new_campaign_pending_review("camp_123", "999888777")
+
+    assert len(calls) == 1
+    assert "camp_123" in calls[0]["text"]
+    assert "act=999888777" in calls[0]["text"]

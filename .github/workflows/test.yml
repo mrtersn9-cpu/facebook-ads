@@ -21,4 +21,4 @@ jobs:
           pip install pytest-cov
 
       - name: Run tests
-        run: pytest --cov=guardrails --cov=action_executor --cov-report=term-missing
+        run: pytest --cov=guardrails --cov=action_executor --cov=creative_guardrails --cov-report=term-missing

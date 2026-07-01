@@ -77,8 +77,8 @@ etkisini tek bir düşük riskli kampanyaya sınırlamak için kullanılır.
 ## Test
 
 ```bash
-pytest                                            # tüm testler
-pytest --cov=guardrails --cov=action_executor     # kritik dosyalarda kapsam
+pytest                                                                     # tüm testler
+pytest --cov=guardrails --cov=action_executor --cov=creative_guardrails    # kritik dosyalarda kapsam
 ```
 
 Testler tamamen izole çalışır — gerçek Meta/Anthropic/Slack API'lerine hiç
@@ -117,17 +117,55 @@ creative_generator.py     Claude ile reklam metni üretimi (organik caption ≠ 
 - Bu faz gerçek Meta API'sine **hiçbir yazma çağrısı yapmaz**; sadece
   creative önerisi üretir.
 
-**Medyanın reklamda kullanılması için iki seçenek** (FAZ 12'de değerlendirilecek):
+**Medyanın reklamda kullanılması için iki seçenek** vardı; **Seçenek A**
+implementasyonu FAZ 12'de yapıldı:
 
-- **Seçenek A (düşük risk, ilk implementasyon bu):** Var olan organik
-  gönderiyi `object_story_id` ile olduğu gibi reklam creative'i olarak
-  kullanmak ("boost" mantığı) — görsel/video yeniden yüklenmez, en az
-  teknik risk.
-- **Seçenek B (daha esnek, daha riskli):** Medyayı `/act_<id>/adimages`
-  veya `/act_<id>/advideos` ile yeniden yükleyip sıfırdan bir `ad_creative`
-  oluşturmak — daha fazla kontrol verir ama daha fazla API çağrısı ve hata
-  yüzeyi demektir. Faz 12 stabil olduktan sonra ayrı bir alt görev olarak
-  ele alınacaktır.
+- **Seçenek A (düşük risk, uygulanan bu):** Var olan organik gönderiyi
+  `object_story_id` (`{META_PAGE_ID}_{post_id}`) ile olduğu gibi reklam
+  creative'i olarak kullanmak ("boost" mantığı) — görsel/video yeniden
+  yüklenmez, en az teknik risk.
+- **Seçenek B (daha esnek, daha riskli, uygulanmadı):** Medyayı
+  `/act_<id>/adimages` veya `/act_<id>/advideos` ile yeniden yükleyip
+  sıfırdan bir `ad_creative` oluşturmak — daha fazla kontrol verir ama daha
+  fazla API çağrısı ve hata yüzeyi demektir. Ayrı bir alt görev olarak ele
+  alınabilir.
+
+### Kampanya/Reklam Oluşturma (FAZ 12)
+
+```
+creative_guardrails.py    Faz 11 önerileri için AYRI, en az o kadar katı guardrail
+campaign_builder.py        Kampanya → ad set → creative → reklam zincirini kurar
+run_creative_pipeline.py   Ayrı, isteğe bağlı komut: python run_creative_pipeline.py --once
+```
+
+- `meta_client.py`'deki `create_campaign`/`create_adset`/`create_ad_creative`/
+  `create_ad` metotlarının **hiçbirinde `status` parametresi yoktur** —
+  `"PAUSED"` payload'a sabit yazılır, dışarıdan hiçbir şekilde override
+  edilemez (Değişmez Kural #8'in kod seviyesinde zorlanması; `status="ACTIVE"`
+  geçmeye çalışmak `TypeError` ile sonuçlanır).
+- `creative_guardrails.py`, `guardrails.py`'den bağımsız bir katmandır:
+  - `MAX_NEW_CAMPAIGNS_PER_RUN` (varsayılan 1) ve `MAX_NEW_CAMPAIGNS_PER_DAY`
+    (varsayılan 3, `logs/actions.jsonl`'den birikimli sayılır) aşılırsa
+    fazlalık reddedilir; günlük limit zaten dolmuşsa hiçbir creative
+    onaylanmaz (fail-closed, `CreativeGuardrailViolation`).
+  - Yasaklı ifade listesi (`primary_text`/`headline`) taranır; eşleşen
+    creative hiçbir API çağrısı yapılmadan reddedilir.
+  - Yeni bir ad set'in başlangıç bütçesi her zaman
+    `DEFAULT_NEW_ADSET_DAILY_BUDGET` sabitidir — Claude'un önerisi hiç
+    sorulmaz/dikkate alınmaz.
+- `campaign_builder.py` bir zincirde (kampanya→ad set→creative→reklam)
+  hata olursa yarım kalan objeleri silmeye ÇALIŞMAZ (silme de riskli bir
+  yazma işlemidir); hatayı ve o ana kadar oluşan obje id'lerini loglar,
+  insan manuel temizler. Bir creative'in zinciri başarısız olsa bile
+  diğer creative'ler işlenmeye devam eder.
+- `run_creative_pipeline.py --once`, ana `main.py` optimizasyon
+  döngüsünden **ayrı bir komuttur** ve onunla aynı process'te otomatik
+  tetiklenmez — insan bunu bilinçli olarak çalıştırmalıdır.
+- Her yeni `PAUSED` kampanya için (Slack ayarlıysa) "incelemeni bekliyor"
+  bildirimi + Ads Manager linki gönderilir.
+- **Gerçek hesapla ilk canlı deneme sadece insan, Ads Manager'da oluşan
+  `PAUSED` reklamı manuel gözden geçirip elle `ACTIVE` yaptıktan sonra**
+  tamamlanmış sayılır (FAZ 8'in kademeli rollout mantığına benzer şekilde).
 
 ## Acil Durum
 
@@ -155,11 +193,14 @@ platforma bağımlılığı yoktur. Asgari gereksinimler:
 
 ## Proje Durumu
 
-FAZ 0–9 tamamlandı: iskelet, mock/pagination/hata sınıflandırması, karar
-motoru şema doğrulama, guardrail test kapsamı, dry-run pipeline, scheduler
-dayanıklılığı, bildirimler, genişletilmiş test kapsamı ve production
-sertleştirme (log rotasyonu, heartbeat, token expiry uyarısı). Kademeli
-canlıya alma (FAZ 8) insan gözetiminde, gerçek hesapla, günler süren bir
-süreçtir ve bu repodaki otomasyonun kapsamı dışındadır — sadece ona hazırlık
-(`SCOPE_CAMPAIGN_NAME_FILTER`) eklenmiştir. Detaylar için `CLAUDE.md`'ye
-bakın.
+FAZ 0–12'nin tamamı tamamlandı: iskelet, mock/pagination/hata
+sınıflandırması, karar motoru şema doğrulama, guardrail test kapsamı,
+dry-run pipeline, scheduler dayanıklılığı, bildirimler, genişletilmiş test
+kapsamı, production sertleştirme (log rotasyonu, heartbeat, token expiry
+uyarısı), Instagram gönderi/creative üretim akışı ve guardrail'li otomatik
+kampanya oluşturma (her zaman `PAUSED`). Kademeli canlıya alma (FAZ 8),
+gerçek hesapla ve günler süren insan gözetimiyle yapılan bir süreçtir ve bu
+repodaki otomasyonun kapsamı dışındadır — sadece ona hazırlık
+(`SCOPE_CAMPAIGN_NAME_FILTER`) eklenmiştir; gerçek hesapla ilk canlı
+kampanya/reklam denemesi de aynı şekilde insanın Ads Manager'da elle
+`ACTIVE` yapmasını bekler. Detaylar için `CLAUDE.md`'ye bakın.
