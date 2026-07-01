@@ -38,16 +38,19 @@ Kurallar:
 - reason alanı asla boş olmamalı.
 - Emin değilsen "no_action" öner.
 
+Not: daily_budget ve spend değerleri ana para birimi cinsindedir (kuruş/cent
+değil) — new_daily_budget önerini de aynı birimde ver.
+
 Örnek:
 Girdi:
 [
-  {"adset_id": "7001", "name": "Adset A", "campaign_id": "6001", "daily_budget": "2000", "spend": 45.32, "purchases": 3},
-  {"adset_id": "7002", "name": "Adset B", "campaign_id": "6001", "daily_budget": "1500", "spend": 12.10, "purchases": 0}
+  {"adset_id": "7001", "name": "Adset A", "campaign_id": "6001", "daily_budget": 20.0, "spend": 45.32, "purchases": 3},
+  {"adset_id": "7002", "name": "Adset B", "campaign_id": "6001", "daily_budget": 15.0, "spend": 12.10, "purchases": 0}
 ]
 
 Çıktı:
 [
-  {"adset_id": "7001", "action": "update_budget", "new_daily_budget": 2400, "reason": "Yüksek dönüşüm oranı ve pozitif ROAS; bütçe artışı fırsatı var"},
+  {"adset_id": "7001", "action": "update_budget", "new_daily_budget": 24.0, "reason": "Yüksek dönüşüm oranı ve pozitif ROAS; bütçe artışı fırsatı var"},
   {"adset_id": "7002", "action": "pause", "reason": "12 gündür harcama var ama hiç satış yok"}
 ]
 """

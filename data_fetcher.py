@@ -46,12 +46,18 @@ def fetch_adset_performance(client: MetaClient | None = None) -> list[dict]:
 
         purchases = _extract_purchases(row.get("actions", []))
 
+        # Graph API daily_budget'ı en küçük para birimi (kuruş/cent) cinsinden
+        # döner; guardrails/decision_engine/action_executor tutarlılığı için
+        # burada ana para birimine (ör. TL/USD) çeviriyoruz.
+        raw_budget = adset.get("daily_budget")
+        daily_budget = float(raw_budget) / 100 if raw_budget not in (None, "") else None
+
         snapshot.append(
             {
                 "adset_id": adset["id"],
                 "name": adset.get("name", ""),
                 "campaign_id": adset.get("campaign_id", ""),
-                "daily_budget": adset.get("daily_budget"),
+                "daily_budget": daily_budget,
                 "spend": spend,
                 "purchases": purchases,
             }
