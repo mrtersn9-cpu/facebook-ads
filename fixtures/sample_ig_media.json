@@ -1,0 +1,42 @@
+[
+  {
+    "id": "ig_media_1",
+    "caption": "Yeni koleksiyonumuz mağazalarda! Kaçırmayın 🔥",
+    "media_type": "IMAGE",
+    "media_url": "https://example.com/media/ig_media_1.jpg",
+    "permalink": "https://instagram.com/p/ig_media_1",
+    "timestamp": "2026-06-15T09:00:00+0000",
+    "like_count": 850,
+    "comments_count": 42
+  },
+  {
+    "id": "ig_media_2",
+    "caption": "Bugün hava çok güzel, ofisten bir kare.",
+    "media_type": "IMAGE",
+    "media_url": "https://example.com/media/ig_media_2.jpg",
+    "permalink": "https://instagram.com/p/ig_media_2",
+    "timestamp": "2026-06-20T09:00:00+0000",
+    "like_count": 40,
+    "comments_count": 2
+  },
+  {
+    "id": "ig_media_3",
+    "caption": "Müşterilerimizden gelen geri bildirimler bizi çok mutlu ediyor!",
+    "media_type": "VIDEO",
+    "media_url": "https://example.com/media/ig_media_3.mp4",
+    "permalink": "https://instagram.com/p/ig_media_3",
+    "timestamp": "2026-06-22T09:00:00+0000",
+    "like_count": 610,
+    "comments_count": 88
+  },
+  {
+    "id": "ig_media_4",
+    "caption": "Kurumsal duyuru: yeni ofisimize taşındık.",
+    "media_type": "IMAGE",
+    "media_url": "https://example.com/media/ig_media_4.jpg",
+    "permalink": "https://instagram.com/p/ig_media_4",
+    "timestamp": "2026-06-10T09:00:00+0000",
+    "like_count": 120,
+    "comments_count": 5
+  }
+]

@@ -67,6 +67,19 @@ class Config:
     # riskli kampanya grubuna sınırlamak için kullanılır.
     SCOPE_CAMPAIGN_NAME_FILTER = os.environ.get("SCOPE_CAMPAIGN_NAME_FILTER", "")
 
+    # --- Instagram / creative üretimi (FAZ 11) ---
+    IG_MOCK_MODE = _bool("IG_MOCK_MODE", False)
+    IG_ACCESS_TOKEN = os.environ.get("IG_ACCESS_TOKEN", "") or os.environ.get("META_ACCESS_TOKEN", "")
+    IG_API_VERSION = os.environ.get("IG_API_VERSION", "v25.0")
+    IG_BUSINESS_ACCOUNT_ID = os.environ.get("IG_BUSINESS_ACCOUNT_ID", "")
+    IG_MIN_POST_AGE_HOURS = _float("IG_MIN_POST_AGE_HOURS", 48.0)
+    IG_TOP_N_POSTS = _int("IG_TOP_N_POSTS", 5)
+
+    # --- Kampanya/reklam oluşturma guardrail'leri (FAZ 12) ---
+    MAX_NEW_CAMPAIGNS_PER_RUN = _int("MAX_NEW_CAMPAIGNS_PER_RUN", 1)
+    MAX_NEW_CAMPAIGNS_PER_DAY = _int("MAX_NEW_CAMPAIGNS_PER_DAY", 3)
+    DEFAULT_NEW_ADSET_DAILY_BUDGET = _float("DEFAULT_NEW_ADSET_DAILY_BUDGET", 10.0)
+
     @classmethod
     def validate(cls) -> None:
         """Zorunlu değişkenleri kontrol eder; eksikse anlamlı bir hata fırlatır.
@@ -80,6 +93,29 @@ class Config:
                 missing.append("META_ACCESS_TOKEN")
             if not cls.META_AD_ACCOUNT_ID:
                 missing.append("META_AD_ACCOUNT_ID")
+
+        if not cls.ANTHROPIC_API_KEY:
+            missing.append("ANTHROPIC_API_KEY")
+
+        if missing:
+            raise ConfigError(
+                "Eksik zorunlu ortam değişken(ler)i: "
+                + ", ".join(missing)
+                + ". Lütfen .env dosyanızı .env.example'a göre doldurun."
+            )
+
+    @classmethod
+    def validate_ig(cls) -> None:
+        """Instagram creative pipeline'ı (FAZ 11-12, ayrı ve opsiyonel bir
+        akış) için gereken değişkenleri kontrol eder. Ana optimizasyon
+        döngüsünün validate()'inden bağımsızdır."""
+        missing = []
+
+        if not cls.IG_MOCK_MODE:
+            if not cls.IG_ACCESS_TOKEN:
+                missing.append("IG_ACCESS_TOKEN (veya META_ACCESS_TOKEN)")
+            if not cls.IG_BUSINESS_ACCOUNT_ID:
+                missing.append("IG_BUSINESS_ACCOUNT_ID")
 
         if not cls.ANTHROPIC_API_KEY:
             missing.append("ANTHROPIC_API_KEY")

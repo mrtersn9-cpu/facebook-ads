@@ -90,6 +90,45 @@ dokunmaz, `requests`/`anthropic` çağrıları monkeypatch ile sahtelenir.
 ihlalinde (her zaman) uyarı gönderilir. Ayarlı değilse sistem sessizce bu
 adımı atlar — Slack zorunlu bir bağımlılık değildir.
 
+## Instagram Creative Pipeline (FAZ 11-12)
+
+Ana kampanya optimizasyon döngüsünden tamamen ayrı, isteğe bağlı ikinci bir
+akış: bağlı Instagram Business hesabındaki organik gönderileri kaynak
+alıp yeni reklam creative'leri üretir/oluşturur.
+
+```
+ig_client.py           IG Graph API istemcisi (IG_MOCK_MODE destekli, salt okunur)
+post_selector.py         Engagement rate'e göre gönderi skorlama/seçme
+creative_generator.py     Claude ile reklam metni üretimi (organik caption ≠ reklam metni)
+```
+
+- **Ön koşul:** IG hesabı Business/Creator olmalı ve bir Facebook Page'e
+  bağlı olmalı; token'a `instagram_basic` + `pages_read_engagement` izinleri
+  eklenmeli.
+- `ig_client.py` sadece OKUMA yapar — hiçbir yazma uç noktası içermez.
+- `post_selector.select_top_posts()`, `IG_MIN_POST_AGE_HOURS`'tan (varsayılan
+  48 saat) daha yeni gönderileri eler (yeterli veri toplamamış olabilirler)
+  ve `(like+comment)/reach` engagement rate'ine göre en iyi `IG_TOP_N_POSTS`
+  tanesini seçer.
+- `creative_generator.py` her seçilen gönderi için Claude'dan reklama
+  optimize edilmiş yeni metin ister; organik caption'ın birebir aynısı
+  veya şemaya uymayan bir cevap gelirse o gönderi için `None` döner —
+  hiçbir alan tahmin edilerek doldurulmaz.
+- Bu faz gerçek Meta API'sine **hiçbir yazma çağrısı yapmaz**; sadece
+  creative önerisi üretir.
+
+**Medyanın reklamda kullanılması için iki seçenek** (FAZ 12'de değerlendirilecek):
+
+- **Seçenek A (düşük risk, ilk implementasyon bu):** Var olan organik
+  gönderiyi `object_story_id` ile olduğu gibi reklam creative'i olarak
+  kullanmak ("boost" mantığı) — görsel/video yeniden yüklenmez, en az
+  teknik risk.
+- **Seçenek B (daha esnek, daha riskli):** Medyayı `/act_<id>/adimages`
+  veya `/act_<id>/advideos` ile yeniden yükleyip sıfırdan bir `ad_creative`
+  oluşturmak — daha fazla kontrol verir ama daha fazla API çağrısı ve hata
+  yüzeyi demektir. Faz 12 stabil olduktan sonra ayrı bir alt görev olarak
+  ele alınacaktır.
+
 ## Acil Durum
 
 - `KILL_SWITCH=true` ortam değişkenini ayarlayarak botu hiçbir dış çağrı
