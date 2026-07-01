@@ -1,0 +1,14 @@
+[
+  {
+    "id": "6001",
+    "name": "Yaz Kampanyası",
+    "status": "ACTIVE",
+    "objective": "CONVERSIONS"
+  },
+  {
+    "id": "6002",
+    "name": "Kış Kampanyası",
+    "status": "PAUSED",
+    "objective": "TRAFFIC"
+  }
+]

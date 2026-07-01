@@ -5,6 +5,7 @@ Kullanım:
   python main.py            RUN_INTERVAL_HOURS aralığıyla sürekli çalışır.
 """
 import argparse
+import logging
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -13,6 +14,11 @@ from data_fetcher import fetch_adset_performance
 from decision_engine import get_action_recommendations
 from guardrails import GuardrailViolation, apply_guardrails
 from action_executor import execute_actions
+
+logging.basicConfig(
+    level=getattr(logging, Config.LOG_LEVEL.upper(), logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 from logger import log_action
 
 

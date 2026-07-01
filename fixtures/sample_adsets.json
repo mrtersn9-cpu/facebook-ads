@@ -1,0 +1,37 @@
+[
+  {
+    "id": "7001",
+    "name": "Adset A - Retargeting",
+    "status": "ACTIVE",
+    "daily_budget": "2000",
+    "campaign_id": "6001"
+  },
+  {
+    "id": "7002",
+    "name": "Adset B - Lookalike",
+    "status": "ACTIVE",
+    "daily_budget": "1500",
+    "campaign_id": "6001"
+  },
+  {
+    "id": "7003",
+    "name": "Adset C - Duraklatilmis",
+    "status": "PAUSED",
+    "daily_budget": "1000",
+    "campaign_id": "6002"
+  },
+  {
+    "id": "7004",
+    "name": "Adset D - Sifir Harcama",
+    "status": "ACTIVE",
+    "daily_budget": "500",
+    "campaign_id": "6002"
+  },
+  {
+    "id": "7005",
+    "name": "Adset E - Veri Yok",
+    "status": "ACTIVE",
+    "daily_budget": "800",
+    "campaign_id": "6002"
+  }
+]

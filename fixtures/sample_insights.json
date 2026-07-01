@@ -1,0 +1,43 @@
+{
+  "7001": [
+    {
+      "spend": "45.32",
+      "impressions": "10234",
+      "clicks": "312",
+      "actions": [
+        {"action_type": "link_click", "value": "280"},
+        {"action_type": "purchase", "value": "3"}
+      ],
+      "purchase_roas": [{"action_type": "omni_purchase", "value": "4.5"}]
+    }
+  ],
+  "7002": [
+    {
+      "spend": "12.10",
+      "impressions": "4021",
+      "clicks": "88",
+      "actions": [
+        {"action_type": "link_click", "value": "80"}
+      ],
+      "purchase_roas": []
+    }
+  ],
+  "7003": [
+    {
+      "spend": "0.00",
+      "impressions": "0",
+      "clicks": "0",
+      "actions": [],
+      "purchase_roas": []
+    }
+  ],
+  "7004": [
+    {
+      "spend": "0.00",
+      "impressions": "150",
+      "clicks": "1",
+      "actions": [],
+      "purchase_roas": []
+    }
+  ]
+}

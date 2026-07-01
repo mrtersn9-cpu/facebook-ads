@@ -1,6 +1,10 @@
 """Aktif ad set'lerin performans verisini toplayıp karar motoru için bir
 snapshot (özet liste) üretir."""
+import logging
+
 from meta_client import MetaClient
+
+logger = logging.getLogger(__name__)
 
 
 def _extract_purchases(actions: list[dict]) -> int:
@@ -24,10 +28,22 @@ def fetch_adset_performance(client: MetaClient | None = None) -> list[dict]:
 
         insights = client.get_insights(adset["id"])
         if not insights:
+            logger.debug(
+                "Ad set %s (%s) için insight verisi yok, snapshot'a alınmıyor.",
+                adset.get("id"), adset.get("name", ""),
+            )
             continue
 
         row = insights[0]
         spend = float(row.get("spend", 0) or 0)
+
+        if spend == 0:
+            logger.debug(
+                "Ad set %s (%s) sıfır harcamalı, snapshot'a alınmıyor.",
+                adset.get("id"), adset.get("name", ""),
+            )
+            continue
+
         purchases = _extract_purchases(row.get("actions", []))
 
         snapshot.append(

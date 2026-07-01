@@ -1,17 +1,42 @@
 """Facebook/Meta Marketing Graph API için ince bir istemci (requests tabanlı).
 
-Not: Bu FAZ 0 iskeletidir. Mock mod, pagination ve ayrıntılı hata
-sınıflandırması FAZ 1'de eklenecektir.
+FAZ 1: mock mod (META_MOCK_MODE), pagination takibi ve auth/rate-limit hata
+sınıflandırması eklendi.
 """
+import json
+import os
+import time
+
 import requests
 
 from config import Config
 
 REQUEST_TIMEOUT = 15
+MAX_RETRIES = 3
+BACKOFF_BASE_SECONDS = 1
+
+AUTH_ERROR_CODES = {190}
+RATE_LIMIT_ERROR_CODES = {4, 17, 32, 613}
+
+FIXTURES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 
 
 class MetaAPIError(Exception):
     """Graph API bir hata döndürdüğünde fırlatılır."""
+
+
+class MetaAuthError(MetaAPIError):
+    """Token geçersiz/süresi dolmuş (code 190). Retry yapılmaz — token'ı
+    yenilemek insan işidir."""
+
+
+class MetaRateLimitError(MetaAPIError):
+    """Rate limit hatası (code 4/17/32/613). Backoff ile yeniden denenir."""
+
+
+def _load_fixture(filename: str):
+    with open(os.path.join(FIXTURES_DIR, filename), "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 class MetaClient:
@@ -21,17 +46,53 @@ class MetaClient:
         self.api_version = Config.META_API_VERSION
         self.base_url = f"https://graph.facebook.com/{self.api_version}"
 
-    def _get(self, path: str, params: dict | None = None) -> dict:
+    # --- düşük seviye istek/backoff ---
+
+    def _with_backoff(self, func, *args, **kwargs) -> dict:
+        delay = BACKOFF_BASE_SECONDS
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                return func(*args, **kwargs)
+            except MetaRateLimitError:
+                if attempt == MAX_RETRIES:
+                    raise
+                time.sleep(delay)
+                delay *= 2
+
+    def _do_get(self, path: str, params: dict | None = None) -> dict:
         params = dict(params or {})
         params["access_token"] = self.access_token
         resp = requests.get(f"{self.base_url}/{path}", params=params, timeout=REQUEST_TIMEOUT)
         return self._handle_response(resp)
 
-    def _post(self, path: str, data: dict | None = None) -> dict:
+    def _do_get_absolute(self, url: str) -> dict:
+        resp = requests.get(url, timeout=REQUEST_TIMEOUT)
+        return self._handle_response(resp)
+
+    def _do_post(self, path: str, data: dict | None = None) -> dict:
         data = dict(data or {})
         data["access_token"] = self.access_token
         resp = requests.post(f"{self.base_url}/{path}", data=data, timeout=REQUEST_TIMEOUT)
         return self._handle_response(resp)
+
+    def _get(self, path: str, params: dict | None = None) -> dict:
+        return self._with_backoff(self._do_get, path, params)
+
+    def _post(self, path: str, data: dict | None = None) -> dict:
+        return self._with_backoff(self._do_post, path, data)
+
+    def _get_all_pages(self, path: str, params: dict | None = None) -> list[dict]:
+        """paging.next takip edilerek tüm sayfaların "data" listelerini birleştirir."""
+        payload = self._get(path, params)
+        items = list(payload.get("data", []))
+
+        next_url = payload.get("paging", {}).get("next")
+        while next_url:
+            payload = self._with_backoff(self._do_get_absolute, next_url)
+            items.extend(payload.get("data", []))
+            next_url = payload.get("paging", {}).get("next")
+
+        return items
 
     @staticmethod
     def _handle_response(resp: requests.Response) -> dict:
@@ -42,28 +103,45 @@ class MetaClient:
 
         if resp.status_code >= 400 or "error" in payload:
             error = payload.get("error", {})
-            raise MetaAPIError(
-                f"Graph API hatası (code={error.get('code')}): {error.get('message', payload)}"
-            )
+            code = error.get("code")
+            message = error.get("message", payload)
+
+            if code in AUTH_ERROR_CODES:
+                raise MetaAuthError(
+                    f"Graph API auth hatası (code={code}): {message}. "
+                    "Token süresi dolmuş/geçersiz olabilir; retry yapılmayacak, "
+                    "token'ın yenilenmesi gerekiyor."
+                )
+            if code in RATE_LIMIT_ERROR_CODES:
+                raise MetaRateLimitError(f"Graph API rate-limit hatası (code={code}): {message}")
+
+            raise MetaAPIError(f"Graph API hatası (code={code}): {message}")
         return payload
 
+    # --- okuma uçları ---
+
     def get_campaigns(self) -> list[dict]:
-        data = self._get(
+        if Config.META_MOCK_MODE:
+            return _load_fixture("sample_campaigns.json")
+        return self._get_all_pages(
             f"act_{self.ad_account_id}/campaigns",
             {"fields": "id,name,status,objective"},
         )
-        return data.get("data", [])
 
     def get_adsets(self, campaign_id: str | None = None) -> list[dict]:
-        path = (
-            f"{campaign_id}/adsets"
-            if campaign_id
-            else f"act_{self.ad_account_id}/adsets"
-        )
-        data = self._get(path, {"fields": "id,name,status,daily_budget,campaign_id"})
-        return data.get("data", [])
+        if Config.META_MOCK_MODE:
+            adsets = _load_fixture("sample_adsets.json")
+            if campaign_id:
+                adsets = [a for a in adsets if a.get("campaign_id") == campaign_id]
+            return adsets
+
+        path = f"{campaign_id}/adsets" if campaign_id else f"act_{self.ad_account_id}/adsets"
+        return self._get_all_pages(path, {"fields": "id,name,status,daily_budget,campaign_id"})
 
     def get_insights(self, object_id: str, date_preset: str = "last_7d") -> list[dict]:
+        if Config.META_MOCK_MODE:
+            return _load_fixture("sample_insights.json").get(object_id, [])
+
         data = self._get(
             f"{object_id}/insights",
             {
@@ -72,6 +150,8 @@ class MetaClient:
             },
         )
         return data.get("data", [])
+
+    # --- yazma uçları ---
 
     def update_adset_budget(self, adset_id: str, daily_budget_cents: int) -> dict:
         return self._post(adset_id, {"daily_budget": daily_budget_cents})
