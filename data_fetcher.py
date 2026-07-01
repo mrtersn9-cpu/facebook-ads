@@ -2,6 +2,7 @@
 snapshot (özet liste) üretir."""
 import logging
 
+from config import Config
 from meta_client import MetaClient
 
 logger = logging.getLogger(__name__)
@@ -14,15 +15,39 @@ def _extract_purchases(actions: list[dict]) -> int:
     return 0
 
 
+def _resolve_scope_campaign_ids(client: MetaClient) -> set | None:
+    """SCOPE_CAMPAIGN_NAME_FILTER ayarlıysa, adında bu alt dizeyi içeren
+    kampanyaların id'lerini döner. Ayarlı değilse None (kapsam sınırı yok)."""
+    if not Config.SCOPE_CAMPAIGN_NAME_FILTER:
+        return None
+
+    needle = Config.SCOPE_CAMPAIGN_NAME_FILTER.lower()
+    matched = {c["id"] for c in client.get_campaigns() if needle in c.get("name", "").lower()}
+    logger.info(
+        "Kapsam filtresi aktif ('%s'): %d kampanya eşleşti.",
+        Config.SCOPE_CAMPAIGN_NAME_FILTER, len(matched),
+    )
+    return matched
+
+
 def fetch_adset_performance(client: MetaClient | None = None) -> list[dict]:
     """Aktif (ACTIVE) ad set'ler için harcama/performans snapshot'ı döner.
+
+    SCOPE_CAMPAIGN_NAME_FILTER ayarlıysa sadece o kampanyalardaki ad set'ler
+    dahil edilir (kademeli canlıya alma sırasında botun etkisini sınırlamak
+    için — bkz. FAZ 8).
 
     Her eleman: adset_id, name, campaign_id, daily_budget, spend, purchases.
     """
     client = client or MetaClient()
     snapshot = []
 
+    scope_campaign_ids = _resolve_scope_campaign_ids(client)
+
     for adset in client.get_adsets():
+        if scope_campaign_ids is not None and adset.get("campaign_id") not in scope_campaign_ids:
+            continue
+
         if adset.get("status") != "ACTIVE":
             continue
 

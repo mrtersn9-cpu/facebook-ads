@@ -53,6 +53,13 @@ class Config:
     # --- Bildirim (opsiyonel) ---
     SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL", "")
 
+    # --- Kademeli canlıya alma (FAZ 8) ---
+    # Boşsa hesaptaki tüm aktif ad set'ler kapsam dahilindedir. Doldurulursa
+    # sadece adında bu alt dizeyi (case-insensitive) içeren kampanyalardaki
+    # ad set'ler işlenir — staged rollout'ta botun etkisini tek bir düşük
+    # riskli kampanya grubuna sınırlamak için kullanılır.
+    SCOPE_CAMPAIGN_NAME_FILTER = os.environ.get("SCOPE_CAMPAIGN_NAME_FILTER", "")
+
     @classmethod
     def validate(cls) -> None:
         """Zorunlu değişkenleri kontrol eder; eksikse anlamlı bir hata fırlatır.

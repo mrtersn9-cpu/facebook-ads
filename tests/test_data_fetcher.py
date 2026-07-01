@@ -1,18 +1,23 @@
 """FAZ 7: data_fetcher.py'nin sıfır ad set, sıfır harcama, eksik purchases
 ve durum filtrelemesi senaryolarını doğru ele aldığını doğrular."""
+import config
 from data_fetcher import fetch_adset_performance
 
 
 class FakeClient:
-    def __init__(self, adsets, insights_by_id):
+    def __init__(self, adsets, insights_by_id, campaigns=None):
         self._adsets = adsets
         self._insights_by_id = insights_by_id
+        self._campaigns = campaigns or []
 
     def get_adsets(self, campaign_id=None):
         return self._adsets
 
     def get_insights(self, object_id, date_preset="last_7d"):
         return self._insights_by_id.get(object_id, [])
+
+    def get_campaigns(self):
+        return self._campaigns
 
 
 def test_no_adsets_returns_empty_snapshot():
@@ -84,3 +89,41 @@ def test_multiple_active_adsets_all_included():
 
     assert {row["adset_id"] for row in snapshot} == {"1", "2"}
     assert next(r for r in snapshot if r["adset_id"] == "1")["purchases"] == 2
+
+
+def test_scope_filter_limits_to_matching_campaign(monkeypatch):
+    monkeypatch.setattr(config.Config, "SCOPE_CAMPAIGN_NAME_FILTER", "pilot")
+    campaigns = [
+        {"id": "c1", "name": "Pilot Kampanyası"},
+        {"id": "c2", "name": "Ana Kampanya"},
+    ]
+    adsets = [
+        {"id": "1", "name": "A", "status": "ACTIVE", "daily_budget": "1000", "campaign_id": "c1"},
+        {"id": "2", "name": "B", "status": "ACTIVE", "daily_budget": "1000", "campaign_id": "c2"},
+    ]
+    insights = {
+        "1": [{"spend": "10.00", "actions": []}],
+        "2": [{"spend": "10.00", "actions": []}],
+    }
+    client = FakeClient(adsets, insights, campaigns=campaigns)
+
+    snapshot = fetch_adset_performance(client)
+
+    assert {row["adset_id"] for row in snapshot} == {"1"}
+
+
+def test_no_scope_filter_includes_all_campaigns(monkeypatch):
+    monkeypatch.setattr(config.Config, "SCOPE_CAMPAIGN_NAME_FILTER", "")
+    adsets = [
+        {"id": "1", "name": "A", "status": "ACTIVE", "daily_budget": "1000", "campaign_id": "c1"},
+        {"id": "2", "name": "B", "status": "ACTIVE", "daily_budget": "1000", "campaign_id": "c2"},
+    ]
+    insights = {
+        "1": [{"spend": "10.00", "actions": []}],
+        "2": [{"spend": "10.00", "actions": []}],
+    }
+    client = FakeClient(adsets, insights, campaigns=[])
+
+    snapshot = fetch_adset_performance(client)
+
+    assert {row["adset_id"] for row in snapshot} == {"1", "2"}
