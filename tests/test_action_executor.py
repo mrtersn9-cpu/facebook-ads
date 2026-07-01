@@ -2,6 +2,7 @@
 ve kısmi başarısızlıklarda durmadan devam edip her sonucu logladığını
 doğrular. Gerçek Meta API'ye hiç dokunmaz."""
 import json
+import signal
 
 import config
 import action_executor
@@ -107,3 +108,21 @@ def test_shutdown_flag_stops_before_next_action_but_keeps_prior_results(monkeypa
     logged = [json.loads(line) for line in (tmp_path / "logs" / "actions.jsonl").read_text(encoding="utf-8").strip().splitlines()]
     assert len(logged) == 1
     assert logged[0]["status"] == "shutdown"
+
+
+def test_install_signal_handlers_registers_sigint_and_sigterm():
+    original_sigint = signal.getsignal(signal.SIGINT)
+    original_sigterm = signal.getsignal(signal.SIGTERM)
+    try:
+        action_executor.install_signal_handlers()
+        assert signal.getsignal(signal.SIGINT) is action_executor._handle_shutdown_signal
+        assert signal.getsignal(signal.SIGTERM) is action_executor._handle_shutdown_signal
+    finally:
+        signal.signal(signal.SIGINT, original_sigint)
+        signal.signal(signal.SIGTERM, original_sigterm)
+
+
+def test_handle_shutdown_signal_sets_flag(monkeypatch):
+    monkeypatch.setattr(action_executor, "_shutdown_requested", False)
+    action_executor._handle_shutdown_signal(signal.SIGINT, None)
+    assert action_executor._shutdown_requested is True
