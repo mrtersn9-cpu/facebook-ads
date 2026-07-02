@@ -38,6 +38,13 @@ class Config:
     ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
     ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 
+    # --- Kampanya hedefi ---
+    # "awareness": hesap bilinirlik/reach odaklıdır, karar motoru satış
+    # (purchases) yokluğuna göre pause önermez; reach/frequency/CPM'e bakar.
+    # "sales": karar motoru satış/dönüşüm verimliliğine göre karar verir
+    # (varsayılan davranış, FAZ 0-7'de yazılan mantık).
+    CAMPAIGN_OBJECTIVE = os.environ.get("CAMPAIGN_OBJECTIVE", "awareness").strip().lower()
+
     # --- Operasyon ---
     DRY_RUN = _bool("DRY_RUN", True)
     KILL_SWITCH = _bool("KILL_SWITCH", False)

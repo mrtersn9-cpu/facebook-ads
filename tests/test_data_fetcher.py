@@ -91,6 +91,45 @@ def test_multiple_active_adsets_all_included():
     assert next(r for r in snapshot if r["adset_id"] == "1")["purchases"] == 2
 
 
+def test_awareness_metrics_are_included_in_snapshot():
+    adsets = [{"id": "1", "name": "A", "status": "ACTIVE", "daily_budget": "2000", "campaign_id": "c1"}]
+    insights = {
+        "1": [
+            {
+                "spend": "10.00",
+                "actions": [],
+                "impressions": "50000",
+                "reach": "30000",
+                "frequency": "1.67",
+                "cpm": "0.87",
+            }
+        ]
+    }
+    client = FakeClient(adsets, insights)
+
+    snapshot = fetch_adset_performance(client)
+
+    row = snapshot[0]
+    assert row["impressions"] == 50000
+    assert row["reach"] == 30000
+    assert row["frequency"] == 1.67
+    assert row["cpm"] == 0.87
+
+
+def test_missing_awareness_metrics_default_to_zero():
+    adsets = [{"id": "1", "name": "A", "status": "ACTIVE", "daily_budget": "2000", "campaign_id": "c1"}]
+    insights = {"1": [{"spend": "10.00", "actions": []}]}
+    client = FakeClient(adsets, insights)
+
+    snapshot = fetch_adset_performance(client)
+
+    row = snapshot[0]
+    assert row["impressions"] == 0
+    assert row["reach"] == 0
+    assert row["frequency"] == 0.0
+    assert row["cpm"] == 0.0
+
+
 def test_scope_filter_limits_to_matching_campaign(monkeypatch):
     monkeypatch.setattr(config.Config, "SCOPE_CAMPAIGN_NAME_FILTER", "pilot")
     campaigns = [

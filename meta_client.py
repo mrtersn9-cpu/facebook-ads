@@ -149,7 +149,7 @@ class MetaClient:
         data = self._get(
             f"{object_id}/insights",
             {
-                "fields": "spend,impressions,clicks,actions,purchase_roas",
+                "fields": "spend,impressions,reach,frequency,cpm,clicks,actions,purchase_roas",
                 "date_preset": date_preset,
             },
         )

@@ -3,6 +3,7 @@ cevaplarını güvenli şekilde ele aldığını doğrular. Gerçek Anthropic AP
 hiç dokunmaz; anthropic.Anthropic monkeypatch ile sahtelenir."""
 import json
 
+import config
 import decision_engine
 
 
@@ -101,3 +102,43 @@ def test_large_snapshot_truncated_to_highest_spend(monkeypatch, tmp_path):
     sent = json.loads(captured["content"])
     assert len(sent) == decision_engine.MAX_ADSETS_PER_REQUEST
     assert sent[0]["spend"] == 249
+
+
+def test_awareness_objective_prompt_tells_model_to_ignore_purchases(monkeypatch):
+    monkeypatch.setattr(config.Config, "CAMPAIGN_OBJECTIVE", "awareness")
+
+    prompt = decision_engine._build_system_prompt()
+
+    assert "BİLİNİRLİK" in prompt
+    assert "reach" in prompt
+    assert "asla" in prompt.lower() and "pause" in prompt.lower()
+
+
+def test_sales_objective_prompt_is_used_when_configured(monkeypatch):
+    monkeypatch.setattr(config.Config, "CAMPAIGN_OBJECTIVE", "sales")
+
+    prompt = decision_engine._build_system_prompt()
+
+    assert "SATIŞ/DÖNÜŞÜM" in prompt
+    assert "BİLİNİRLİK" not in prompt
+
+
+def test_awareness_is_the_default_objective(monkeypatch):
+    monkeypatch.setattr(config.Config, "CAMPAIGN_OBJECTIVE", "awareness")
+
+    captured = {}
+
+    class CapturingMessages:
+        def create(self, **kwargs):
+            captured["system"] = kwargs["system"]
+            return FakeMessage("[]")
+
+    class CapturingClient:
+        def __init__(self, api_key):
+            self.messages = CapturingMessages()
+
+    monkeypatch.setattr(decision_engine.anthropic, "Anthropic", CapturingClient)
+
+    decision_engine.get_action_recommendations([{"adset_id": "1", "spend": 10}])
+
+    assert "BİLİNİRLİK" in captured["system"]

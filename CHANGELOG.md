@@ -97,3 +97,20 @@ kampanya→ad set→creative→reklam zinciri oluştu ve loglandı.
 Gerçek hesapla ilk canlı deneme, FAZ 8'deki gibi, sadece insanın Ads
 Manager'da oluşan `PAUSED` reklamı elle `ACTIVE` yapmasıyla tamamlanmış
 sayılır — bu repodaki otomasyon bunu hiçbir koşulda kendisi yapmaz.
+
+## FAZ 8 canlı deneme — kampanya hedefi düzeltmesi (2026-07-02)
+Gerçek hesapla (`DRY_RUN=true`, `META_MOCK_MODE=false`) ilk çalıştırmada
+bot, hiç satış olmayan bir ad set'i "1772.69 harcamaya rağmen hiç satış
+yok" gerekçesiyle `pause` önerdi. Kullanıcı bu hesabın satış değil
+**bilinirlik (awareness)** odaklı olduğunu belirtti — düşük/sıfır satış bu
+tip hesap için normaldir ve tek başına pause gerekçesi olamaz.
+
+Eklendi: `Config.CAMPAIGN_OBJECTIVE` (`awareness` | `sales`, varsayılan
+`awareness`). `data_fetcher.py` artık her snapshot satırına `impressions`,
+`reach`, `frequency`, `cpm` ekliyor (`meta_client.get_insights` bu alanları
+da çekiyor). `decision_engine.py`'nin sistem promptu `awareness` modunda
+Claude'a satış yokluğuna göre asla pause önermemesini, bunun yerine
+reach/frequency/CPM'e bakmasını söylüyor.
+
+Gerçek hesapla doğrulandı: aynı ad set için bir sonraki çalıştırmada bot
+`no_action` önerdi (satış eksikliğine dayalı pause önerisi kayboldu).

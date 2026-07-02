@@ -85,6 +85,13 @@ def fetch_adset_performance(client: MetaClient | None = None) -> list[dict]:
                 "daily_budget": daily_budget,
                 "spend": spend,
                 "purchases": purchases,
+                # Bilinirlik (awareness) odaklı hesaplar için: satın alma
+                # olmasa da bu metrikler ad set'in gerçekten iş görüp
+                # görmediğini gösterir.
+                "impressions": int(float(row.get("impressions", 0) or 0)),
+                "reach": int(float(row.get("reach", 0) or 0)),
+                "frequency": float(row.get("frequency", 0) or 0),
+                "cpm": float(row.get("cpm", 0) or 0),
             }
         )
 

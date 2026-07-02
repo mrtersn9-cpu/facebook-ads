@@ -67,6 +67,22 @@ sadece `logs/actions.jsonl`'e simüle edilmiş olarak loglanır. `DRY_RUN`
 varsayılan olarak `true`'dur ve bunu değiştirmek kademeli, dikkatli bir
 süreç gerektirir (bkz. CLAUDE.md FAZ 8).
 
+## Kampanya Hedefi (Awareness vs. Sales)
+
+`CAMPAIGN_OBJECTIVE` (varsayılan `awareness`) karar motorunun ad set'leri
+nasıl değerlendireceğini belirler:
+
+- **`awareness`** (varsayılan): Hesap bilinirlik/reach odaklıdır. Karar
+  motoru düşük/sıfır `purchases` yüzünden asla `pause` önermez; bunun
+  yerine `reach`, `impressions`, `frequency` (reklam yorgunluğu) ve `cpm`
+  metriklerine bakar. `data_fetcher.py` bu metrikleri her snapshot satırına
+  ekler.
+- **`sales`**: Karar motoru satış/dönüşüm verimliliğine (purchases, ROAS)
+  göre karar verir — FAZ 0-7'de yazılan orijinal davranış.
+
+Farklı hesapların/kapsamların farklı hedefleri olabilir; şu an tek bir
+global ayar olarak uygulanıyor (per-kampanya override yok).
+
 ## Kapsamı Sınırlama
 
 `SCOPE_CAMPAIGN_NAME_FILTER` ayarlanırsa, bot sadece adı bu alt diziyi
