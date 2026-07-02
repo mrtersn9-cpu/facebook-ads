@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Meta Ads AI Agent — Dashboard</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, sans-serif; margin: 2rem; background: #0f1115; color: #e6e6e6; }
+  h1 { font-size: 1.4rem; }
+  h2 { font-size: 1.1rem; margin-top: 2rem; color: #9fb4c7; }
+  .status { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1rem 0; }
+  .badge { padding: 0.35rem 0.7rem; border-radius: 6px; font-size: 0.85rem; background: #1c2230; border: 1px solid #2c3444; }
+  .badge.safe { border-color: #2f7d4f; color: #7fe0a0; }
+  .badge.warn { border-color: #a3572e; color: #f0a35a; }
+  table { border-collapse: collapse; width: 100%; margin-top: 0.5rem; }
+  th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #232a38; font-size: 0.85rem; }
+  th { color: #9fb4c7; }
+  .status-applied { color: #7fe0a0; }
+  .status-dry_run { color: #7fb8e0; }
+  .status-rejected { color: #f0a35a; }
+  .status-error, .status-guardrail_violation { color: #f06767; }
+  .status-shutdown { color: #b98cf0; }
+  form { display: inline; }
+  button { background: #2c5fa8; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+  button:hover { background: #3a72c4; }
+  pre { background: #1c2230; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.8rem; white-space: pre-wrap; }
+  .weekly { background: #1c2230; padding: 1rem; border-radius: 6px; white-space: pre-wrap; font-size: 0.85rem; }
+</style>
+</head>
+<body>
+  <h1>Meta Ads AI Agent</h1>
+
+  <div class="status">
+    <span class="badge {{ 'safe' if config_status.DRY_RUN else 'warn' }}">DRY_RUN: {{ config_status.DRY_RUN }}</span>
+    <span class="badge {{ 'warn' if config_status.KILL_SWITCH else 'safe' }}">KILL_SWITCH: {{ config_status.KILL_SWITCH }}</span>
+    <span class="badge">META_MOCK_MODE: {{ config_status.META_MOCK_MODE }}</span>
+    <span class="badge">IG_MOCK_MODE: {{ config_status.IG_MOCK_MODE }}</span>
+    <span class="badge">CAMPAIGN_OBJECTIVE: {{ config_status.CAMPAIGN_OBJECTIVE }}</span>
+    <span class="badge">AD_ACCOUNT: {{ config_status.META_AD_ACCOUNT_ID }}</span>
+  </div>
+  <p style="color:#7a8699; font-size:0.8rem;">
+    Bu ayarlar sadece görüntülenir — değiştirmek için <code>.env</code> dosyasını düzenleyin.
+  </p>
+
+  <h2>Çalıştır</h2>
+  <form action="{{ url_for('run_main') }}" method="post" onsubmit="return confirm('Bütçe optimizasyon döngüsünü bir kez çalıştırmak istediğinize emin misiniz?');">
+    <button type="submit">▶ Bütçe Optimizasyonu (main.py --once)</button>
+  </form>
+  <form action="{{ url_for('run_creative') }}" method="post" onsubmit="return confirm('Instagram creative pipeline\'ını bir kez çalıştırmak istediğinize emin misiniz?');">
+    <button type="submit">▶ Creative Pipeline (run_creative_pipeline.py --once)</button>
+  </form>
+
+  {% if last_run %}
+  <h2>Son Çalıştırma Sonucu</h2>
+  <pre>{{ last_run | tojson(indent=2) }}</pre>
+  {% endif %}
+
+  <h2>Son 7 Gün Özeti</h2>
+  <div class="weekly">{{ weekly }}</div>
+
+  <h2>Son Loglar (logs/actions.jsonl)</h2>
+  <table>
+    <tr><th>Zaman</th><th>Ad Set</th><th>Aksiyon</th><th>Durum</th><th>Gerekçe</th></tr>
+    {% for entry in entries %}
+    <tr>
+      <td>{{ entry.timestamp }}</td>
+      <td>{{ entry.adset_id or '-' }}</td>
+      <td>{{ entry.action or '-' }}</td>
+      <td class="status-{{ entry.status }}">{{ entry.status }}</td>
+      <td>{{ entry.reason or '-' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5">Henüz log kaydı yok.</td></tr>
+    {% endfor %}
+  </table>
+</body>
+</html>

@@ -47,6 +47,28 @@ Gerçek Meta hesabı/token'ı olmadan denemek için `.env`'de
 kampanya/ad set/insight verisiyle çalışır. `ANTHROPIC_API_KEY` her zaman
 gerekir (Claude çağrıları mock'lanmaz; bunlar gerçek ama ucuz API çağrılarıdır).
 
+## Web Dashboard (opsiyonel kolaylık aracı)
+
+CLAUDE.md'deki faz planına ek, isteğe bağlı basit bir web arayüzü:
+
+```bash
+python web_ui.py
+# Tarayıcıda http://127.0.0.1:5000 açın
+```
+
+- Sadece **localhost**'ta dinler — gerçek hesap kimlik bilgileriyle
+  çalıştığı için kimlik doğrulaması eklemeden internete açık bir sunucuda
+  ASLA çalıştırmayın.
+- `DRY_RUN`/`KILL_SWITCH`/`META_MOCK_MODE`/`CAMPAIGN_OBJECTIVE` durumunu
+  **salt okunur** gösterir — bunları değiştirmek için hâlâ `.env`'yi elle
+  düzenlemeniz gerekir (dashboard'dan guardrail/DRY_RUN bypass edilemez).
+  DRY_RUN kapalıyken bu, buton tek tıkla **gerçek** aksiyon uygulanacağı
+  anlamına gelir; dashboard bunu turuncu bir rozetle vurgular.
+- "Çalıştır" düğmeleri mevcut `main.py --once` / `run_creative_pipeline.py
+  --once` komutlarını alt süreç olarak tetikler — yeni bir kod yolu değil,
+  sadece bir kolaylık katmanı.
+- Son `logs/actions.jsonl` kayıtlarını ve haftalık özeti gösterir.
+
 ## Guardrail Mantığı
 
 Karar motorunun (Claude) ürettiği her aksiyon önerisi, uygulanmadan önce
