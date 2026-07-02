@@ -83,6 +83,8 @@ class Config:
     IG_TOP_N_POSTS = _int("IG_TOP_N_POSTS", 5)
     # "Mesaja yönlendir" reklam CTA'sı için: https://ig.me/m/<IG_USERNAME>
     IG_USERNAME = os.environ.get("IG_USERNAME", "")
+    # True ise sadece video/Reels gönderiler reklam adayı olarak değerlendirilir.
+    IG_ONLY_VIDEO_POSTS = _bool("IG_ONLY_VIDEO_POSTS", False)
 
     # --- Kampanya/reklam oluşturma guardrail'leri (FAZ 12) ---
     MAX_NEW_CAMPAIGNS_PER_RUN = _int("MAX_NEW_CAMPAIGNS_PER_RUN", 1)

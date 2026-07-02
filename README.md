@@ -150,7 +150,9 @@ creative_generator.py     Claude ile reklam metni üretimi (organik caption ≠ 
 - `post_selector.select_top_posts()`, `IG_MIN_POST_AGE_HOURS`'tan (varsayılan
   48 saat) daha yeni gönderileri eler (yeterli veri toplamamış olabilirler)
   ve `(like+comment)/reach` engagement rate'ine göre en iyi `IG_TOP_N_POSTS`
-  tanesini seçer.
+  tanesini seçer. `IG_ONLY_VIDEO_POSTS=true` ayarlanırsa resim gönderiler
+  tamamen elenir, sadece video/Reels içerik (`media_type == "VIDEO"`)
+  reklam adayı olarak değerlendirilir.
 - `creative_generator.py` her seçilen gönderi için Claude'dan reklama
   optimize edilmiş yeni metin ister; organik caption'ın birebir aynısı
   veya şemaya uymayan bir cevap gelirse o gönderi için `None` döner —

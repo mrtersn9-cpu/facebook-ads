@@ -2,7 +2,18 @@
 minimum yaş filtrelemesini doğru yaptığını doğrular."""
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
+import config
 from post_selector import select_top_posts
+
+
+@pytest.fixture(autouse=True)
+def _default_no_video_filter(monkeypatch):
+    # Gerçek .env'de IG_ONLY_VIDEO_POSTS=true olabilir; testleri buna
+    # bağımlı kılmamak için varsayılanı burada sabitliyoruz. Video filtresini
+    # test eden case'ler kendi içinde açıkça True'ya çeker.
+    monkeypatch.setattr(config.Config, "IG_ONLY_VIDEO_POSTS", False)
 
 
 def _iso(dt: datetime) -> str:
@@ -87,3 +98,46 @@ def test_defaults_come_from_config(monkeypatch):
 
     assert len(result) == 1
     assert result[0]["id"] == "b"
+
+
+def test_only_video_excludes_image_posts_when_requested():
+    now = datetime.now(timezone.utc)
+    old_enough = now - timedelta(hours=100)
+    media = [
+        {"id": "img", "media_type": "IMAGE", "like_count": 1000, "comments_count": 0, "timestamp": _iso(old_enough)},
+        {"id": "vid", "media_type": "VIDEO", "like_count": 1, "comments_count": 0, "timestamp": _iso(old_enough)},
+    ]
+    insights = {"img": {"reach": 100}, "vid": {"reach": 100}}
+
+    result = select_top_posts(media, insights, top_n=5, min_age_hours=48, only_video=True)
+
+    assert [m["id"] for m in result] == ["vid"]
+
+
+def test_only_video_false_includes_images_too():
+    now = datetime.now(timezone.utc)
+    old_enough = now - timedelta(hours=100)
+    media = [
+        {"id": "img", "media_type": "IMAGE", "like_count": 1, "comments_count": 0, "timestamp": _iso(old_enough)},
+        {"id": "vid", "media_type": "VIDEO", "like_count": 1, "comments_count": 0, "timestamp": _iso(old_enough)},
+    ]
+    insights = {"img": {"reach": 100}, "vid": {"reach": 100}}
+
+    result = select_top_posts(media, insights, top_n=5, min_age_hours=48, only_video=False)
+
+    assert {m["id"] for m in result} == {"img", "vid"}
+
+
+def test_only_video_defaults_to_config(monkeypatch):
+    monkeypatch.setattr(config.Config, "IG_ONLY_VIDEO_POSTS", True)
+    now = datetime.now(timezone.utc)
+    old_enough = now - timedelta(hours=100)
+    media = [
+        {"id": "img", "media_type": "IMAGE", "like_count": 1, "comments_count": 0, "timestamp": _iso(old_enough)},
+        {"id": "vid", "media_type": "VIDEO", "like_count": 1, "comments_count": 0, "timestamp": _iso(old_enough)},
+    ]
+    insights = {"img": {"reach": 100}, "vid": {"reach": 100}}
+
+    result = select_top_posts(media, insights, top_n=5, min_age_hours=48)
+
+    assert [m["id"] for m in result] == ["vid"]

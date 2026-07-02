@@ -25,19 +25,27 @@ def select_top_posts(
     insights_by_id: dict[str, dict],
     top_n: int | None = None,
     min_age_hours: float | None = None,
+    only_video: bool | None = None,
 ) -> list[dict]:
     """En iyi performans gösteren ilk N gönderiyi reklam adayı olarak döner.
 
     Her elemana `engagement_rate` alanı eklenir. Henüz yeterli veri
     toplamamış (min_age_hours'tan daha yeni) gönderiler elenir.
+    `only_video` (varsayılan `Config.IG_ONLY_VIDEO_POSTS`) True ise sadece
+    video/Reels gönderiler (media_type == "VIDEO") değerlendirilir; resim
+    gönderileri elenir.
     """
     top_n = Config.IG_TOP_N_POSTS if top_n is None else top_n
     min_age_hours = Config.IG_MIN_POST_AGE_HOURS if min_age_hours is None else min_age_hours
+    only_video = Config.IG_ONLY_VIDEO_POSTS if only_video is None else only_video
 
     now = datetime.now(timezone.utc)
     candidates = []
 
     for media in media_list:
+        if only_video and media.get("media_type") != "VIDEO":
+            continue
+
         posted_at = _parse_timestamp(media["timestamp"])
         age_hours = (now - posted_at).total_seconds() / 3600
         if age_hours < min_age_hours:
