@@ -55,12 +55,29 @@ def build_campaign_from_creative(creative: dict, post: dict, client: MetaClient 
         )
         created["adset_id"] = adset["id"]
 
+        object_story_id = None
+        if post.get("media_type") == "VIDEO" and Config.META_PAGE_ID and post.get("timestamp"):
+            # Reels'ler source_instagram_media_id ile genelde "video Facebook'a
+            # yüklenmemiş" hatası veriyor (canlı hesapta doğrulandı) — Sayfa
+            # feed'inden zaman damgasıyla eşleşen gerçek gönderiyi bulup
+            # object_story_id ile kullanmak gerekiyor.
+            matched_post_id = client.find_page_post_id_for_timestamp(Config.META_PAGE_ID, post["timestamp"])
+            if matched_post_id:
+                object_story_id = matched_post_id
+            else:
+                logger.warning(
+                    "media_id=%s için Sayfa'da eşleşen gönderi bulunamadı; "
+                    "source_instagram_media_id ile denenecek (Facebook'a çapraz "
+                    "paylaşılmamış olabilir).",
+                    post.get("id"),
+                )
+
         ad_creative = client.create_ad_creative(
             name=f"[Auto] {label} - Creative"[:100],
-            instagram_media_id=post["id"],
+            instagram_media_id=None if object_story_id else post["id"],
+            object_story_id=object_story_id,
             call_to_action_type=CREATIVE_CALL_TO_ACTION,
             call_to_action_link=f"https://ig.me/m/{Config.IG_USERNAME}" if Config.IG_USERNAME else None,
-            instagram_actor_id=Config.IG_BUSINESS_ACCOUNT_ID or None,
         )
         created["creative_id"] = ad_creative["id"]
 

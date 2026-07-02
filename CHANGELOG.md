@@ -178,3 +178,29 @@ ve PAUSED** bir kampanya→ad set→creative→reklam zinciri başarıyla
 oluşturuldu ve `logs/actions.jsonl`'e loglandı. Bu süreçte oluşan çok
 sayıda başarısız/yarım deneme (`campaign_builder.py`'nin tasarımı gereği
 temizlenmeden bırakıldı) Ads Manager'dan manuel temizlendi/temizlenmeli.
+
+## Fix — Reels için gerçek Facebook post eşleştirmesi (2026-07-02)
+Kullanıcı, Facebook'a paylaşılmış olduğunu doğruladığı Reels'lerde bile
+"Instagram Videosunun Facebook'a Yüklenmesi Zorunludur" hatası almaya
+devam etti. Doğrudan Graph API sorgularıyla teşhis edildi:
+- `is_shared_to_feed: true` ve `boost_eligibility_info.eligible_to_boost:
+  true` — içerik gerçekten uygun.
+- `act_<id>/instagram_accounts` boş dönüyordu — Instagram hesabı Sayfa'ya
+  bağlıydı ama bu **reklam hesabına** ayrıca yetkilendirilmemişti. Kullanıcı
+  Business Settings → Instagram Hesapları → Bağlı Varlıklar'dan bu
+  bağlantıyı kurdu (ekran görüntüsüyle doğrulandı) ve token'ı yeniledi.
+- `instagram_actor_id` eklemek farklı bir hataya yol açtı ("geçerli bir
+  Instagram hesap ID'si değil") — `source_instagram_media_id` ile birlikte
+  kullanıldığında çakışıyor; kaldırıldı.
+- Asıl çözüm: Reels'lerin IG medya id'si üzerinden `source_instagram_media_id`
+  ile Facebook video referansı bulunamıyor. Page Access Token ile Sayfa
+  `/feed`'i çekilip (User token bunu "Yeni Sayfalar deneyimi" nedeniyle
+  reddediyor) IG medyasının zaman damgasına en yakın gönderi eşleştirilerek
+  gerçek Facebook post id'si bulunuyor; `object_story_id =
+  {page_id}_{facebook_post_id}` ile creative oluşturuluyor
+  (`meta_client.find_page_post_id_for_timestamp`). Resim/Feed içerik için
+  `source_instagram_media_id` zaten çalıştığından değişmedi.
+
+Gerçek hesapla doğrulandı: daha önce üç kez farklı hatalarla başarısız olan
+aynı Reel (media_id=18105521489010592), bu düzeltmeyle tam otomatik olarak
+gerçek, PAUSED bir kampanya→ad set→creative→reklam zincirine dönüştü.

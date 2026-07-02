@@ -346,10 +346,11 @@ def test_create_ad_creative_real_mode_omits_cta_by_default(real_mode, monkeypatc
     client.create_ad_creative(name="Test", instagram_media_id="ig_media_1")
 
     assert "call_to_action" not in captured
-    assert "instagram_actor_id" not in captured
+    assert "source_instagram_media_id" in captured
+    assert "object_story_id" not in captured
 
 
-def test_create_ad_creative_real_mode_sends_instagram_actor_id_when_given(real_mode, monkeypatch):
+def test_create_ad_creative_real_mode_uses_object_story_id_when_given(real_mode, monkeypatch):
     captured = {}
 
     def fake_post(url, data=None, timeout=None):
@@ -359,9 +360,17 @@ def test_create_ad_creative_real_mode_sends_instagram_actor_id_when_given(real_m
     monkeypatch.setattr(meta_client.requests, "post", fake_post)
 
     client = MetaClient()
-    client.create_ad_creative(name="Test", instagram_media_id="ig_media_1", instagram_actor_id="17841404833072091")
+    client.create_ad_creative(name="Test", object_story_id="1500036703546874_1511136507694292")
 
-    assert captured["instagram_actor_id"] == "17841404833072091"
+    assert captured["object_story_id"] == "1500036703546874_1511136507694292"
+    assert "source_instagram_media_id" not in captured
+
+
+def test_create_ad_creative_requires_one_of_instagram_media_id_or_object_story_id():
+    client = MetaClient()
+
+    with pytest.raises(ValueError):
+        client.create_ad_creative(name="Test")
 
 
 def test_create_ad_creative_real_mode_sends_call_to_action_when_given(real_mode, monkeypatch):
@@ -428,3 +437,64 @@ def test_create_methods_have_no_overridable_status_parameter():
 
     with pytest.raises(TypeError):
         client.create_ad(adset_id="a1", creative_id="cr1", name="x", status="ACTIVE")
+
+
+def test_find_page_post_id_noop_in_mock_mode(monkeypatch):
+    monkeypatch.setattr(config.Config, "META_MOCK_MODE", True)
+    client = MetaClient()
+
+    assert client.find_page_post_id_for_timestamp("page1", "2026-06-29T12:25:12+0000") is None
+
+
+def test_find_page_post_id_returns_closest_match_within_tolerance(real_mode, monkeypatch):
+    def fake_get(url, params=None, timeout=None):
+        if url.endswith("/me/accounts"):
+            return FakeResponse(200, {"data": [{"id": "page1", "access_token": "page-token-abc"}]})
+        if url.endswith("/page1/feed"):
+            return FakeResponse(
+                200,
+                {
+                    "data": [
+                        {"id": "page1_far", "created_time": "2026-06-20T00:00:00+0000"},
+                        {"id": "page1_close", "created_time": "2026-06-29T12:24:38+0000"},
+                    ]
+                },
+            )
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr(meta_client.requests, "get", fake_get)
+
+    client = MetaClient()
+    result = client.find_page_post_id_for_timestamp("page1", "2026-06-29T12:25:12+0000", tolerance_minutes=15)
+
+    assert result == "page1_close"
+
+
+def test_find_page_post_id_returns_none_when_no_match_within_tolerance(real_mode, monkeypatch):
+    def fake_get(url, params=None, timeout=None):
+        if url.endswith("/me/accounts"):
+            return FakeResponse(200, {"data": [{"id": "page1", "access_token": "page-token-abc"}]})
+        if url.endswith("/page1/feed"):
+            return FakeResponse(200, {"data": [{"id": "page1_far", "created_time": "2020-01-01T00:00:00+0000"}]})
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr(meta_client.requests, "get", fake_get)
+
+    client = MetaClient()
+    result = client.find_page_post_id_for_timestamp("page1", "2026-06-29T12:25:12+0000", tolerance_minutes=15)
+
+    assert result is None
+
+
+def test_find_page_post_id_returns_none_when_page_token_not_found(real_mode, monkeypatch):
+    def fake_get(url, params=None, timeout=None):
+        if url.endswith("/me/accounts"):
+            return FakeResponse(200, {"data": [{"id": "other-page", "access_token": "x"}]})
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr(meta_client.requests, "get", fake_get)
+
+    client = MetaClient()
+    result = client.find_page_post_id_for_timestamp("page1", "2026-06-29T12:25:12+0000")
+
+    assert result is None

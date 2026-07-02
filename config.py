@@ -85,6 +85,11 @@ class Config:
     IG_USERNAME = os.environ.get("IG_USERNAME", "")
     # True ise sadece video/Reels gönderiler reklam adayı olarak değerlendirilir.
     IG_ONLY_VIDEO_POSTS = _bool("IG_ONLY_VIDEO_POSTS", False)
+    # IG hesabına bağlı Facebook Page ID'si. Reels'ler için object_story_id
+    # oluşturmak amacıyla Sayfa feed'inde eşleşen gönderiyi bulmak için gerekli
+    # (source_instagram_media_id Reels'lerde Facebook video karşılığını
+    # bulamayabiliyor; object_story_id + doğru Sayfa post id'si çalışıyor).
+    META_PAGE_ID = os.environ.get("META_PAGE_ID", "")
 
     # --- Kampanya/reklam oluşturma guardrail'leri (FAZ 12) ---
     MAX_NEW_CAMPAIGNS_PER_RUN = _int("MAX_NEW_CAMPAIGNS_PER_RUN", 1)

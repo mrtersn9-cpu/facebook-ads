@@ -8,6 +8,7 @@ import logging
 import os
 import time
 import uuid
+from datetime import datetime
 
 import requests
 
@@ -251,48 +252,107 @@ class MetaClient:
     def create_ad_creative(
         self,
         name: str,
-        instagram_media_id: str,
+        instagram_media_id: str | None = None,
+        object_story_id: str | None = None,
         call_to_action_type: str | None = None,
         call_to_action_link: str | None = None,
-        instagram_actor_id: str | None = None,
     ) -> dict:
-        """Seçenek A: var olan organik Instagram gönderisini (Reels dahil)
-        olduğu gibi reklam creative'i olarak kullanır — görsel/video
-        yeniden yüklenmez.
+        """Seçenek A: var olan organik gönderiyi olduğu gibi reklam
+        creative'i olarak kullanır — görsel/video yeniden yüklenmez.
 
-        `source_instagram_media_id` kullanılıyor; `object_story_id`
-        (page_id + post_id) Reels için çalışmıyor çünkü Reels'lerin
-        object_story_id oluşturacak bir Sayfa gönderisi karşılığı yok.
-        `source_instagram_media_id` doğrudan IG media id'sini kabul eder ve
-        hem Feed hem Reels içerik için çalışır.
+        İki yoldan tam olarak biri kullanılmalı:
+        - `object_story_id` (`{page_id}_{facebook_post_id}`): Reels dahil
+          video içerik için gerekli. Facebook post id'si IG medya id'siyle
+          AYNI DEĞİLDİR — `find_page_post_id_for_timestamp()` ile Sayfa
+          feed'inden zaman damgası eşleştirmesiyle bulunmalı.
+        - `instagram_media_id` (`source_instagram_media_id` olarak
+          gönderilir): IG medya id'sini doğrudan kabul eder; resim/Feed
+          içerik için güvenilir çalışır, ama Reels için Meta genellikle
+          "video Facebook'a yüklenmemiş" hatası verir (canlı hesapta
+          doğrulandı — Reels'lerin source_instagram_media_id üzerinden
+          Facebook video referansı bulunamıyor).
 
-        `instagram_actor_id` verilirse (Instagram Business Account id),
-        Meta'ya reklamı hangi Instagram hesabı adına yayınlayacağını açıkça
-        bildirir — bu olmadan Meta bazı durumlarda gönderiyle eşleşen
-        Facebook video kaydını bulamayıp "video Facebook'a yüklenmemiş"
-        gibi yanıltıcı bir hata verebiliyor.
-
-        `call_to_action_type` verilirse (ör. "MESSAGE_PAGE" — mesaja
+        `call_to_action_type` verilirse (ör. "INSTAGRAM_MESSAGE" — mesaja
         yönlendir) bir CTA eklenir. Mesaja yönlendirme CTA'ları için Meta
         `call_to_action.value.link` alanında bir hedef ister — Instagram
         Direct'e mesaj başlatmak için `https://ig.me/m/<kullanıcı_adı>`
         formatı kullanılır (`call_to_action_link` ile verilir).
         """
+        if instagram_media_id is None and object_story_id is None:
+            raise ValueError("instagram_media_id veya object_story_id parametrelerinden biri verilmeli")
+
         if Config.META_MOCK_MODE:
             return {
                 "id": f"mock_creative_{uuid.uuid4().hex[:8]}",
                 "name": name,
                 "source_instagram_media_id": instagram_media_id,
+                "object_story_id": object_story_id,
             }
-        payload = {"name": name, "source_instagram_media_id": instagram_media_id}
-        if instagram_actor_id is not None:
-            payload["instagram_actor_id"] = instagram_actor_id
+
+        payload = {"name": name}
+        if object_story_id is not None:
+            payload["object_story_id"] = object_story_id
+        else:
+            payload["source_instagram_media_id"] = instagram_media_id
+
         if call_to_action_type is not None:
             cta = {"type": call_to_action_type}
             if call_to_action_link is not None:
                 cta["value"] = {"link": call_to_action_link}
             payload["call_to_action"] = json.dumps(cta)
         return self._post(f"act_{self.ad_account_id}/adcreatives", payload)
+
+    def find_page_post_id_for_timestamp(
+        self, page_id: str, target_timestamp: str, tolerance_minutes: float = 15
+    ) -> str | None:
+        """IG medyasının zaman damgasına (target_timestamp) en yakın Sayfa
+        gönderisini bulur, `{page_id}_{post_id}` formatında döner. Sayfa
+        `/feed` uç noktası "Yeni Sayfalar deneyimi" nedeniyle User token
+        kabul etmiyor; bu yüzden önce bir Page Access Token bulunur
+        (`/me/accounts` üzerinden). Eşleşme bulunamazsa None döner —
+        bu, gönderinin Facebook'a çapraz paylaşılmadığı anlamına gelebilir.
+        """
+        if Config.META_MOCK_MODE:
+            return None
+
+        accounts = self._get("me/accounts", {"fields": "id,access_token"})
+        page_token = None
+        for page in accounts.get("data", []):
+            if page.get("id") == page_id:
+                page_token = page.get("access_token")
+                break
+        if not page_token:
+            logger.warning("Sayfa (%s) için access token bulunamadı; post eşleştirme atlanıyor.", page_id)
+            return None
+
+        resp = requests.get(
+            f"{self.base_url}/{page_id}/feed",
+            params={"access_token": page_token, "fields": "id,created_time", "limit": 25},
+            timeout=REQUEST_TIMEOUT,
+        )
+        payload = self._handle_response(resp)
+
+        try:
+            target_dt = datetime.fromisoformat(target_timestamp.replace("+0000", "+00:00"))
+        except ValueError:
+            return None
+
+        best_id = None
+        best_diff = None
+        for post in payload.get("data", []):
+            created = post.get("created_time")
+            if not created:
+                continue
+            try:
+                post_dt = datetime.fromisoformat(created.replace("+0000", "+00:00"))
+            except ValueError:
+                continue
+            diff = abs((post_dt - target_dt).total_seconds())
+            if diff <= tolerance_minutes * 60 and (best_diff is None or diff < best_diff):
+                best_diff = diff
+                best_id = post["id"]
+
+        return best_id
 
     def create_ad(self, adset_id: str, creative_id: str, name: str) -> dict:
         if Config.META_MOCK_MODE:

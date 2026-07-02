@@ -166,15 +166,20 @@ creative_generator.py     Claude ile reklam metni üretimi (organik caption ≠ 
   creative önerisi üretir.
 
 **Medyanın reklamda kullanılması için iki seçenek** vardı; **Seçenek A**
-implementasyonu FAZ 12'de yapıldı:
+implementasyonu FAZ 12'de yapıldı, canlı hesapta test edilerek iki alt
+yola ayrıldı (bkz. aşağıdaki "gerçek Meta API gereksinimleri"):
 
 - **Seçenek A (düşük risk, uygulanan bu):** Var olan organik gönderiyi
-  `source_instagram_media_id` ile olduğu gibi reklam creative'i olarak
-  kullanmak ("boost" mantığı) — görsel/video yeniden yüklenmez, en az
-  teknik risk. (İlk implementasyon `object_story_id` kullanıyordu ama bu,
-  Reels için çalışmıyor — Reels'lerin karşılığı bir Sayfa gönderisi
-  olmadığından `source_instagram_media_id`'ye geçildi; bu alan hem Feed hem
-  Reels içerik için çalışıyor.)
+  olduğu gibi reklam creative'i olarak kullanmak ("boost" mantığı) —
+  görsel/video yeniden yüklenmez. **Resim/Feed içerik** için
+  `source_instagram_media_id` (doğrudan IG medya id'si) kullanılır.
+  **Video/Reels içerik** için bu alan tek başına yetmiyor — Sayfa
+  feed'inden zaman damgasıyla eşleşen gerçek Facebook post id'si bulunup
+  `object_story_id` (`{page_id}_{facebook_post_id}`) ile kullanılıyor
+  (`meta_client.find_page_post_id_for_timestamp`). Eşleşme bulunamazsa
+  (gönderi Facebook'a çapraz paylaşılmamışsa) `source_instagram_media_id`'ye
+  geri dönülür ve muhtemelen Meta hata verir — bu durumda gönderiyi
+  Facebook Sayfası'na da paylaşmanız gerekir.
 - **Seçenek B (daha esnek, daha riskli, uygulanmadı):** Medyayı
   `/act_<id>/adimages` veya `/act_<id>/advideos` ile yeniden yükleyip
   sıfırdan bir `ad_creative` oluşturmak — daha fazla kontrol verir ama daha
@@ -231,14 +236,30 @@ planında yoktu — Meta'nın kendi platform kısıtlamaları):
   `"INSTAGRAM_MESSAGE"` olmalı (`"MESSAGE_PAGE"` sadece Messenger/Facebook
   için geçerli, Instagram'da desteklenmiyor) ve `call_to_action_link`
   olarak `https://ig.me/m/<IG_USERNAME>` deep-link'i gerekiyor.
-- **Reels kısıtlaması:** Facebook Sayfası'na çapraz paylaşılmamış Reels'ler
-  reklama çevrilemiyor ("Instagram Videosunun Facebook'a Yüklenmesi
-  Zorunludur" hatası) — bu bir Meta platform kısıtlaması, kodla çözülemez;
-  gönderiyi yayınlarken Sayfa'ya da paylaşmanız gerekir.
+- **Reels için Facebook Sayfası eşleştirmesi:** `source_instagram_media_id`
+  Reels'lerde genelde "Instagram Videosunun Facebook'a Yüklenmesi
+  Zorunludur" hatası veriyor, gönderi Sayfa'ya çapraz paylaşılmış olsa
+  bile. Çözüm `object_story_id` + Sayfa feed'inden zaman damgasıyla
+  bulunan gerçek Facebook post id'si (yukarıya bakın) — bunun çalışması
+  için gönderinin gerçekten Facebook'a çapraz paylaşılmış olması gerekir.
+  `instagram_actor_id` alanı da denendi ama `source_instagram_media_id`
+  ile birlikte kullanıldığında "geçerli bir Instagram hesap ID'si değil"
+  hatasına yol açtığından kaldırıldı.
+- **Instagram hesabının reklam hesabına ayrı yetkilendirilmesi gerekir:**
+  Instagram hesabının bir Facebook Sayfası'na bağlı olması yetmez —
+  Business Settings → Hesaplar → Instagram Hesapları → ilgili hesap →
+  **"Bağlı Varlıklar"** sekmesinden reklam hesabına da açıkça bağlanmalı
+  (`act_<id>/instagram_accounts` API'sinden doğrulanabilir). Bu adım
+  atlanırsa hem `object_story_id` hem `source_instagram_media_id` yolları
+  başarısız olur.
 - Meta App'in **Live mode**'da olması gerekir (Development mode'daki
   uygulamalar başkalarının içeriğinden reklam creative'i oluşturamaz) —
   bunun için de geçerli bir Gizlilik Politikası URL'si (App Settings ->
   Basic) şart.
+- Hesap/uygulama tarafında bir yetkilendirme değişikliği (Live mode'a
+  geçiş, Instagram-reklam hesabı bağlantısı) yapıldıktan sonra **token'ı
+  yenilemek gerekebilir** — mevcut token bazen eski yetkilendirme
+  durumunu önbellekte tutuyor.
 - **Gerçek hesapla ilk canlı deneme sadece insan, Ads Manager'da oluşan
   `PAUSED` reklamı manuel gözden geçirip elle `ACTIVE` yaptıktan sonra**
   tamamlanmış sayılır (FAZ 8'in kademeli rollout mantığına benzer şekilde).

@@ -34,7 +34,7 @@ class FakeClient:
             raise MetaAPIError("adset failed")
         return {"id": "adset_1", "status": "PAUSED"}
 
-    def create_ad_creative(self, name, instagram_media_id, call_to_action_type=None, call_to_action_link=None, instagram_actor_id=None):
+    def create_ad_creative(self, name, instagram_media_id=None, object_story_id=None, call_to_action_type=None, call_to_action_link=None):
         self.calls.append("create_ad_creative")
         if self.fail_at == "create_ad_creative":
             raise MetaAPIError("creative failed")
@@ -45,6 +45,9 @@ class FakeClient:
         if self.fail_at == "create_ad":
             raise MetaAPIError("ad failed")
         return {"id": "ad_1", "status": "PAUSED"}
+
+    def find_page_post_id_for_timestamp(self, page_id, timestamp, tolerance_minutes=15):
+        return getattr(self, "matched_post_id", None)
 
 
 def test_full_chain_succeeds_and_logs_applied(monkeypatch, tmp_path):
@@ -106,3 +109,68 @@ def test_batch_continues_after_one_failure(monkeypatch, tmp_path):
     assert summary["created"] == 2
     assert summary["errors"] == 1
     assert len(summary["results"]) == 3
+
+
+class RecordingCreativeClient(FakeClient):
+    def __init__(self, matched_post_id=None):
+        super().__init__()
+        self.matched_post_id = matched_post_id
+        self.creative_calls = []
+
+    def create_ad_creative(self, name, instagram_media_id=None, object_story_id=None, call_to_action_type=None, call_to_action_link=None):
+        self.creative_calls.append(
+            {"instagram_media_id": instagram_media_id, "object_story_id": object_story_id}
+        )
+        return super().create_ad_creative(name, instagram_media_id, object_story_id, call_to_action_type, call_to_action_link)
+
+    def find_page_post_id_for_timestamp(self, page_id, timestamp, tolerance_minutes=15):
+        return self.matched_post_id
+
+
+def test_video_post_with_matching_page_post_uses_object_story_id(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config.Config, "META_PAGE_ID", "page1")
+    client = RecordingCreativeClient(matched_post_id="page1_12345")
+
+    video_post = {"id": "m1", "media_type": "VIDEO", "timestamp": "2026-06-29T12:25:12+0000"}
+    build_campaign_from_creative(CREATIVE, video_post, client=client)
+
+    assert client.creative_calls == [{"instagram_media_id": None, "object_story_id": "page1_12345"}]
+
+
+def test_video_post_without_match_falls_back_to_instagram_media_id(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config.Config, "META_PAGE_ID", "page1")
+    client = RecordingCreativeClient(matched_post_id=None)
+
+    video_post = {"id": "m1", "media_type": "VIDEO", "timestamp": "2026-06-29T12:25:12+0000"}
+    build_campaign_from_creative(CREATIVE, video_post, client=client)
+
+    assert client.creative_calls == [{"instagram_media_id": "m1", "object_story_id": None}]
+
+
+def test_image_post_always_uses_instagram_media_id(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config.Config, "META_PAGE_ID", "page1")
+    client = RecordingCreativeClient(matched_post_id="page1_should_not_be_used")
+
+    image_post = {"id": "m1", "media_type": "IMAGE", "timestamp": "2026-06-29T12:25:12+0000"}
+    build_campaign_from_creative(CREATIVE, image_post, client=client)
+
+    assert client.creative_calls == [{"instagram_media_id": "m1", "object_story_id": None}]
+
+
+def test_video_post_skips_lookup_when_page_id_not_configured(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config.Config, "META_PAGE_ID", "")
+
+    class ExplodingLookupClient(RecordingCreativeClient):
+        def find_page_post_id_for_timestamp(self, page_id, timestamp, tolerance_minutes=15):
+            raise AssertionError("META_PAGE_ID boşken lookup çağrılmamalı")
+
+    client = ExplodingLookupClient()
+    video_post = {"id": "m1", "media_type": "VIDEO", "timestamp": "2026-06-29T12:25:12+0000"}
+
+    build_campaign_from_creative(CREATIVE, video_post, client=client)
+
+    assert client.creative_calls == [{"instagram_media_id": "m1", "object_story_id": None}]
