@@ -204,3 +204,49 @@ devam etti. Doğrudan Graph API sorgularıyla teşhis edildi:
 Gerçek hesapla doğrulandı: daha önce üç kez farklı hatalarla başarısız olan
 aynı Reel (media_id=18105521489010592), bu düzeltmeyle tam otomatik olarak
 gerçek, PAUSED bir kampanya→ad set→creative→reklam zincirine dönüştü.
+
+## Ek — Sağlık sınıflandırması, onay kuyruğu ve marka bağlamı (2026-07-02)
+Kullanıcı, ayrı bir tasarım notunda (`sonuc-yayinlari-reklam-otomasyonu.md`)
+daha zengin bir karar mantığı önerdi (sağlık sınıflandırması, güven skoru,
+kademeli bütçe kararları, insan onay kuyruğu, marka sesi kısıtları) ama tam
+yeni bir yığınla (FastAPI/Streamlit/SQLAlchemy/`facebook-business` SDK)
+yeniden yazım yerine **bu karar mantığının mevcut mimariye entegre
+edilmesini** tercih etti (`ham requests`, Tkinter/Flask arayüz, JSONL log,
+`.env` config korunuyor).
+
+Eklenenler:
+- `decision_engine.py`: `awareness` sistem promptu artık 🟢/🟡/🔴 sağlık
+  sınıflandırması (engagement/frequency/CPM eşikleri, minimum impression)
+  ve `recent_history`'ye dayalı kademeli bütçe/pause mantığı içeriyor. Her
+  aksiyona `guven_skoru` (yüksek/orta/düşük) ekleniyor, eksik/geçersizse
+  güvenli varsayılan `"orta"`ya çekiliyor.
+- `logger.get_recent_actions_for_adset()` + `data_fetcher._summarize_history()`:
+  her ad set snapshot'ına `recent_history` alanı ekleniyor (rotasyon
+  dosyaları dahil, son 10 gün, en fazla 3 kayıt) — veritabanı olmadan
+  "hafıza" sağlıyor.
+- `approval_queue.py` (yeni): guardrail'den geçmiş ama henüz uygulanmamış
+  aksiyonları dosya tabanlı (`logs/approval_queue.jsonl`) bir kuyrukta
+  tutuyor; `queue_action`/`list_pending`/`resolve`.
+- `Config.AUTOMATION_MODE` (`"onayli"` varsayılan | `"tam_otomatik"`):
+  `main.py`'nin `run_once()`'ı `onayli` iken guardrail'i geçen aksiyonları
+  doğrudan uygulamak yerine onay kuyruğuna ekliyor; `tam_otomatik` eski
+  (FAZ 0-10) davranışı korur. Bu, `DRY_RUN`'dan tamamen ayrı bir katmandır.
+- `desktop_app.py`'ye **"Onay Kuyruğu"** sekmesi: bekleyen her aksiyonu
+  (adset, aksiyon, gerekçe, güven skoru) listeler, "Onayla" `action_executor`
+  üzerinden (DRY_RUN'a saygılı şekilde) uygular, "Reddet" hiçbir API
+  çağrısı yapmadan `rejected` olarak loglar.
+- `Config.BRAND_CONTEXT` (opsiyonel serbest metin): ayarlanırsa karar
+  motorunun sistem promptuna eklenir, aracı marka-agnostik tutar.
+- `creative_guardrails.py`'nin yasaklı ifade listesine eğitim sektörüne
+  özgü abartılı/garanti/korku temelli ifadeler eklendi (`"kesin kazan"`,
+  `"%100 başarı"`, `"sınavı garanti"`, `"başarısız olursan"` vb.).
+
+**Davranış değişikliği uyarısı:** `AUTOMATION_MODE` ayarlanmamışsa
+varsayılan `"onayli"`dır — daha önce doğrudan uygulama ile çalışan
+kurulumlar, bu değişiklikten sonra hiçbir aksiyonu otomatik uygulamaz,
+hepsi onay kuyruğuna düşer. Eski davranışı korumak isteyenler `.env`'e
+`AUTOMATION_MODE=tam_otomatik` eklemelidir.
+
+168 → 174 test (approval_queue, decision_engine confidence/brand-context,
+main.py AUTOMATION_MODE dallanması, notifier.notify_queued_for_approval,
+creative_guardrails eğitim sektörü ifadeleri) eklendi, tam suite yeşil.

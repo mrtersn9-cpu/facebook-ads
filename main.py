@@ -11,13 +11,14 @@ import sys
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 from config import Config
+from approval_queue import queue_action
 from data_fetcher import fetch_adset_performance
 from decision_engine import get_action_recommendations
 from guardrails import GuardrailViolation, apply_guardrails
 from action_executor import execute_actions, install_signal_handlers
 from logger import log_action
 from meta_client import check_token_expiry
-from notifier import notify_guardrail_violation, notify_run_summary
+from notifier import notify_guardrail_violation, notify_queued_for_approval, notify_run_summary
 
 # Windows konsolları varsayılan olarak UTF-8 kullanmayabilir; bu, Türkçe
 # karakterlerin ("başlıyor" -> "ba?l?yor") bozuk görünmesine yol açar.
@@ -89,6 +90,30 @@ def run_once() -> None:
                 "reason": r.get("rejection_reason"),
             }
         )
+
+    if Config.AUTOMATION_MODE == "onayli":
+        queued = 0
+        for action in approved:
+            if action.get("action") == "no_action":
+                continue
+            queue_action(action)
+            log_action(
+                {
+                    "adset_id": action.get("adset_id"),
+                    "action": action.get("action"),
+                    "status": "queued_for_approval",
+                    "reason": action.get("reason"),
+                    "details": action,
+                }
+            )
+            queued += 1
+        print(
+            "\nÇalıştırma özeti (AUTOMATION_MODE=onayli — hiçbir aksiyon otomatik uygulanmadı): "
+            f"önerilen={len(actions)}, guardrail_red={len(rejected)}, "
+            f"onaya_gönderilen={queued}"
+        )
+        notify_queued_for_approval(queued, len(actions), len(rejected))
+        return
 
     summary = execute_actions(approved)
 

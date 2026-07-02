@@ -38,6 +38,23 @@ def test_banned_phrase_is_rejected_without_any_api_call(monkeypatch, tmp_path):
     assert "Yasaklı ifade" in rejected[0]["rejection_reason"]
 
 
+@pytest.mark.parametrize(
+    "phrase",
+    ["kesin kazan", "%100 başarı", "sınavı garanti", "üniversiteyi garantile", "başarısız olursan", "kaybetme riski"],
+)
+def test_education_sector_banned_phrase_is_rejected(monkeypatch, tmp_path, phrase):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config.Config, "MAX_NEW_CAMPAIGNS_PER_RUN", 5)
+    monkeypatch.setattr(config.Config, "MAX_NEW_CAMPAIGNS_PER_DAY", 5)
+
+    creative = {**CREATIVE, "headline": f"Bu kursla {phrase}!"}
+
+    approved, rejected = apply_creative_guardrails([creative])
+
+    assert approved == []
+    assert "Yasaklı ifade" in rejected[0]["rejection_reason"]
+
+
 def test_clean_creative_is_approved(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(config.Config, "MAX_NEW_CAMPAIGNS_PER_RUN", 5)

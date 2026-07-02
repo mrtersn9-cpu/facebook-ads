@@ -1,11 +1,48 @@
 """Aktif ad set'lerin performans verisini toplayıp karar motoru için bir
 snapshot (özet liste) üretir."""
 import logging
+from datetime import datetime, timezone
 
 from config import Config
+from logger import get_recent_actions_for_adset
 from meta_client import MetaClient
 
 logger = logging.getLogger(__name__)
+
+HISTORY_LOOKBACK_DAYS = 10
+HISTORY_LIMIT_PER_ADSET = 3
+STATUS_LABELS = {
+    "applied": "uygulandı",
+    "dry_run": "simüle edildi (dry_run)",
+    "queued_for_approval": "onaya gönderildi",
+    "approved": "onaylanıp uygulandı",
+    "rejected": "insan tarafından reddedildi",
+}
+
+
+def _summarize_history(adset_id: str) -> list[dict]:
+    """Karar motoruna "hafıza" sağlamak için bu ad set'e ait son kararları
+    kısa bir özet olarak döner (kaç gün önce, ne yapıldı, neden)."""
+    now = datetime.now(timezone.utc)
+    entries = get_recent_actions_for_adset(adset_id, days=HISTORY_LOOKBACK_DAYS, limit=HISTORY_LIMIT_PER_ADSET)
+
+    summary = []
+    for entry in entries:
+        try:
+            ts = datetime.fromisoformat(entry["timestamp"])
+        except (KeyError, ValueError):
+            continue
+        days_ago = round((now - ts).total_seconds() / 86400, 1)
+        status = entry.get("status", "")
+        summary.append(
+            {
+                "days_ago": days_ago,
+                "action": entry.get("action"),
+                "status": STATUS_LABELS.get(status, status),
+                "reason": entry.get("reason", ""),
+            }
+        )
+    return summary
 
 
 def _extract_purchases(actions: list[dict]) -> int:
@@ -92,6 +129,9 @@ def fetch_adset_performance(client: MetaClient | None = None) -> list[dict]:
                 "reach": int(float(row.get("reach", 0) or 0)),
                 "frequency": float(row.get("frequency", 0) or 0),
                 "cpm": float(row.get("cpm", 0) or 0),
+                # Karar motorunun kademeli kararlar verebilmesi için (ör.
+                # "3 gün önce zaten %50 kesildi, hâlâ zayıfsa şimdi durdur").
+                "recent_history": _summarize_history(adset["id"]),
             }
         )
 

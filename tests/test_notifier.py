@@ -65,3 +65,27 @@ def test_new_campaign_pending_review_includes_ads_manager_link(monkeypatch):
     assert len(calls) == 1
     assert "camp_123" in calls[0]["text"]
     assert "act=999888777" in calls[0]["text"]
+
+
+def test_notify_queued_for_approval_sends_summary(monkeypatch):
+    monkeypatch.setattr(config.Config, "SLACK_WEBHOOK_URL", "https://hooks.slack.test/fake")
+    calls = []
+    monkeypatch.setattr(notifier.requests, "post", lambda url, json=None, timeout=None: calls.append(json))
+
+    notifier.notify_queued_for_approval(3, 5, 1)
+
+    assert len(calls) == 1
+    assert "onaya_gönderilen=3" in calls[0]["text"]
+    assert "önerilen=5" in calls[0]["text"]
+    assert "guardrail_red=1" in calls[0]["text"]
+
+
+def test_notify_queued_for_approval_noop_without_webhook(monkeypatch):
+    monkeypatch.setattr(config.Config, "SLACK_WEBHOOK_URL", "")
+
+    def boom(*a, **k):
+        raise AssertionError("Webhook ayarlı değilken requests.post çağrılmamalı")
+
+    monkeypatch.setattr(notifier.requests, "post", boom)
+
+    notifier.notify_queued_for_approval(1, 1, 0)  # patlamamalı

@@ -33,6 +33,18 @@ def notify_run_summary(summary: dict, proposed_count: int, rejected_count: int) 
     )
 
 
+def notify_queued_for_approval(queued_count: int, proposed_count: int, rejected_count: int) -> None:
+    """AUTOMATION_MODE="onayli" iken hiçbir aksiyon otomatik uygulanmaz;
+    bunun yerine insan onayı bekleyen kuyruğa eklenir. Bu, o run'ın özetini
+    bildirir."""
+    _send(
+        "Meta Ads Agent çalıştırma özeti (onay bekliyor): "
+        f"önerilen={proposed_count}, guardrail_red={rejected_count}, "
+        f"onaya_gönderilen={queued_count}. Onaylamak için masaüstü "
+        "uygulamasındaki 'Onay Kuyruğu' sekmesini kullanın."
+    )
+
+
 def notify_guardrail_violation(message: str) -> None:
     """Guardrail ihlali her zaman bildirilmelidir — bu dikkat gerektiren
     bir durumdur. Webhook ayarlı değilse yine de sessizce atlanır."""

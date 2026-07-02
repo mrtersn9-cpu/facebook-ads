@@ -153,3 +153,50 @@ def test_awareness_is_the_default_objective(monkeypatch):
     decision_engine.get_action_recommendations([{"adset_id": "1", "spend": 10}])
 
     assert "BİLİNİRLİK" in captured["system"]
+
+
+def test_brand_context_is_appended_when_set(monkeypatch):
+    monkeypatch.setattr(config.Config, "BRAND_CONTEXT", "Sonuç Yayınları: YKS/TYT-AYT eğitim yayınevi.")
+
+    prompt = decision_engine._build_system_prompt()
+
+    assert "Sonuç Yayınları" in prompt
+    assert "MARKA BAĞLAMI" in prompt
+
+
+def test_brand_context_omitted_when_empty(monkeypatch):
+    monkeypatch.setattr(config.Config, "BRAND_CONTEXT", "")
+
+    prompt = decision_engine._build_system_prompt()
+
+    assert "MARKA BAĞLAMI" not in prompt
+
+
+def test_confidence_score_defaults_to_orta_when_missing(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    payload = json.dumps([{"adset_id": "1", "action": "pause", "reason": "test"}])
+    _patch_anthropic(monkeypatch, payload)
+
+    actions = decision_engine.get_action_recommendations([{"adset_id": "1", "spend": 10}])
+
+    assert actions[0]["guven_skoru"] == "orta"
+
+
+def test_confidence_score_defaults_to_orta_when_invalid(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    payload = json.dumps([{"adset_id": "1", "action": "pause", "reason": "test", "guven_skoru": "bilinmeyen"}])
+    _patch_anthropic(monkeypatch, payload)
+
+    actions = decision_engine.get_action_recommendations([{"adset_id": "1", "spend": 10}])
+
+    assert actions[0]["guven_skoru"] == "orta"
+
+
+def test_confidence_score_preserved_when_valid(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    payload = json.dumps([{"adset_id": "1", "action": "pause", "reason": "test", "guven_skoru": "düşük"}])
+    _patch_anthropic(monkeypatch, payload)
+
+    actions = decision_engine.get_action_recommendations([{"adset_id": "1", "spend": 10}])
+
+    assert actions[0]["guven_skoru"] == "düşük"

@@ -1,7 +1,19 @@
 """FAZ 7: data_fetcher.py'nin sıfır ad set, sıfır harcama, eksik purchases
 ve durum filtrelemesi senaryolarını doğru ele aldığını doğrular."""
+import json
+
+import pytest
+
 import config
 from data_fetcher import fetch_adset_performance
+
+
+@pytest.fixture(autouse=True)
+def _isolate_logs_dir(monkeypatch, tmp_path):
+    # data_fetcher artık logs/actions.jsonl'den geçmiş okuyor
+    # (recent_history); testlerin gerçek proje log'larını okumasını
+    # engellemek için çalışma dizinini izole ediyoruz.
+    monkeypatch.chdir(tmp_path)
 
 
 class FakeClient:
@@ -166,3 +178,42 @@ def test_no_scope_filter_includes_all_campaigns(monkeypatch):
     snapshot = fetch_adset_performance(client)
 
     assert {row["adset_id"] for row in snapshot} == {"1", "2"}
+
+
+def test_recent_history_is_empty_when_no_logs():
+    adsets = [{"id": "1", "name": "A", "status": "ACTIVE", "daily_budget": "1000", "campaign_id": "c1"}]
+    insights = {"1": [{"spend": "10.00", "actions": []}]}
+    client = FakeClient(adsets, insights)
+
+    snapshot = fetch_adset_performance(client)
+
+    assert snapshot[0]["recent_history"] == []
+
+
+def test_recent_history_includes_past_actions_for_this_adset(tmp_path):
+    from datetime import datetime, timezone
+
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    now = datetime.now(timezone.utc)
+    with open(log_dir / "actions.jsonl", "w", encoding="utf-8") as f:
+        f.write(json.dumps({
+            "timestamp": now.isoformat(), "adset_id": "1", "action": "update_budget",
+            "status": "applied", "reason": "%50 azaltıldı",
+        }) + "\n")
+        f.write(json.dumps({
+            "timestamp": now.isoformat(), "adset_id": "2", "action": "pause",
+            "status": "applied", "reason": "başka ad set",
+        }) + "\n")
+
+    adsets = [{"id": "1", "name": "A", "status": "ACTIVE", "daily_budget": "1000", "campaign_id": "c1"}]
+    insights = {"1": [{"spend": "10.00", "actions": []}]}
+    client = FakeClient(adsets, insights)
+
+    snapshot = fetch_adset_performance(client)
+
+    history = snapshot[0]["recent_history"]
+    assert len(history) == 1
+    assert history[0]["reason"] == "%50 azaltıldı"
+    assert history[0]["status"] == "uygulandı"
+    assert history[0]["days_ago"] < 1

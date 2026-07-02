@@ -17,9 +17,11 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
 
+import approval_queue
+from action_executor import execute_actions
 from config import Config
 from ig_client import IGClient
-from logger import ACTIONS_LOG_PATH
+from logger import ACTIONS_LOG_PATH, log_action
 from post_selector import list_candidate_posts
 from reports.weekly_summary import summarize
 
@@ -33,6 +35,7 @@ STATUS_FIELDS = [
     "IG_MOCK_MODE",
     "CAMPAIGN_OBJECTIVE",
     "META_AD_ACCOUNT_ID",
+    "AUTOMATION_MODE",
 ]
 
 
@@ -104,6 +107,10 @@ class App:
         notebook.add(posts_tab, text="Gönderi Seç (Instagram)")
         self._build_post_selector_tab(posts_tab)
 
+        approval_tab = ttk.Frame(notebook)
+        notebook.add(approval_tab, text="Onay Kuyruğu")
+        self._build_approval_tab(approval_tab)
+
         self.output_text = scrolledtext.ScrolledText(notebook, wrap="word")
         notebook.add(self.output_text, text="Son Çalıştırma Çıktısı")
         self.output_text.insert(tk.END, "Henüz bir çalıştırma yapılmadı.\n")
@@ -142,6 +149,95 @@ class App:
             text="Gönderileri görmek için '⟳ Gönderileri Getir' düğmesine basın.",
         ).pack(anchor="w", padx=5, pady=5)
 
+    def _build_approval_tab(self, parent: ttk.Frame):
+        toolbar = ttk.Frame(parent)
+        toolbar.pack(fill="x", padx=5, pady=5)
+        ttk.Button(toolbar, text="⟳ Yenile", command=self.refresh_approval_queue).pack(side="left", padx=5)
+        ttk.Label(
+            toolbar,
+            text="AUTOMATION_MODE=onayli iken guardrail'den geçen aksiyonlar burada onayınızı bekler.",
+        ).pack(side="left", padx=10)
+
+        list_container = ttk.Frame(parent)
+        list_container.pack(fill="both", expand=True, padx=5, pady=5)
+
+        canvas = tk.Canvas(list_container, borderwidth=0, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(list_container, orient="vertical", command=canvas.yview)
+        self.approval_list_frame = ttk.Frame(canvas)
+        self.approval_list_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=self.approval_list_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+    # --- onay kuyruğu ---
+
+    def refresh_approval_queue(self):
+        for widget in self.approval_list_frame.winfo_children():
+            widget.destroy()
+
+        pending = approval_queue.list_pending()
+        if not pending:
+            ttk.Label(self.approval_list_frame, text="Onay bekleyen aksiyon yok.").pack(
+                anchor="w", padx=5, pady=5
+            )
+            return
+
+        for entry in pending:
+            self._build_approval_row(entry)
+
+    def _build_approval_row(self, entry: dict):
+        action = entry.get("action", {})
+        row = ttk.Frame(self.approval_list_frame, relief="groove", borderwidth=1)
+        row.pack(fill="x", padx=5, pady=3)
+
+        detail = f" -> {action.get('new_daily_budget')}" if action.get("action") == "update_budget" else ""
+        text = (
+            f"[{entry.get('queued_at', '-')}] adset={action.get('adset_id')} | "
+            f"{action.get('action')}{detail} | güven={action.get('guven_skoru', '-')}\n"
+            f"Gerekçe: {action.get('reason', '-')}"
+        )
+        ttk.Label(row, text=text, wraplength=650, justify="left").pack(side="left", fill="x", expand=True, padx=5, pady=5)
+
+        btns = ttk.Frame(row)
+        btns.pack(side="right", padx=5)
+        ttk.Button(btns, text="✅ Onayla", command=lambda: self.approve_entry(entry)).pack(side="top", pady=2)
+        ttk.Button(btns, text="❌ Reddet", command=lambda: self.reject_entry(entry)).pack(side="top", pady=2)
+
+    def approve_entry(self, entry: dict):
+        action = entry.get("action", {})
+        if not messagebox.askyesno(
+            "Onay",
+            f"adset={action.get('adset_id')} için '{action.get('action')}' aksiyonunu onaylayıp "
+            f"{'GERÇEK olarak uygulamak' if not Config.DRY_RUN else 'simüle etmek (DRY_RUN=true)'} "
+            "istediğinize emin misiniz?",
+            icon="warning" if not Config.DRY_RUN else "question",
+        ):
+            return
+        threading.Thread(target=self._approve_entry_worker, args=(entry,), daemon=True).start()
+
+    def _approve_entry_worker(self, entry: dict):
+        resolved = approval_queue.resolve(entry["id"], "approved")
+        if resolved:
+            execute_actions([resolved["action"]])
+        self.root.after(0, self.refresh_approval_queue)
+
+    def reject_entry(self, entry: dict):
+        action = entry.get("action", {})
+        if not messagebox.askyesno("Reddet", f"adset={action.get('adset_id')} için bu aksiyon reddedilsin mi?"):
+            return
+        resolved = approval_queue.resolve(entry["id"], "rejected")
+        if resolved:
+            log_action(
+                {
+                    "adset_id": action.get("adset_id"),
+                    "action": action.get("action"),
+                    "status": "rejected",
+                    "reason": f"İnsan tarafından onay kuyruğunda reddedildi. Orijinal gerekçe: {action.get('reason', '')}",
+                }
+            )
+        self.refresh_approval_queue()
+
     # --- veri yenileme ---
 
     def refresh(self):
@@ -154,6 +250,9 @@ class App:
         self.status_labels["IG_MOCK_MODE"].config(text=str(Config.IG_MOCK_MODE))
         self.status_labels["CAMPAIGN_OBJECTIVE"].config(text=Config.CAMPAIGN_OBJECTIVE)
         self.status_labels["META_AD_ACCOUNT_ID"].config(text=Config.META_AD_ACCOUNT_ID or "(ayarlanmadı)")
+        self.status_labels["AUTOMATION_MODE"].config(text=Config.AUTOMATION_MODE)
+
+        self.refresh_approval_queue()
 
         entries = read_recent_log_entries()
         self.log_text.delete("1.0", tk.END)

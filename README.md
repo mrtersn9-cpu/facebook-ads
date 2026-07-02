@@ -17,6 +17,7 @@ data_fetcher.py        Aktif ad set performans snapshot'ı (kapsam filtresi ile)
 decision_engine.py      Claude API ile JSON aksiyon önerisi + şema doğrulama
 guardrails.py            Bütçe tavanı / max değişim / min spend / fail-closed
 action_executor.py       Onaylı aksiyonları uygular (DRY_RUN destekli)
+approval_queue.py         AUTOMATION_MODE="onayli" iken bekleyen aksiyon kuyruğu
 notifier.py               Opsiyonel Slack webhook bildirimi
 logger.py                 Rotasyonlu JSONL audit log (logs/actions.jsonl)
 main.py                    Scheduler + tek seferlik çalıştırma (--once)
@@ -70,7 +71,9 @@ python desktop_app.py
   Gönderiler İçin Reklam Oluştur" sadece işaretlediklerinizi
   `run_creative_pipeline.py --once --media-ids ...` ile işler, otomatik
   top-N seçimi devre dışı kalır ama guardrail'ler aynen çalışmaya devam
-  eder), son çalıştırma çıktısı, `logs/actions.jsonl` kayıtları, 7 günlük
+  eder), **Onay Kuyruğu** (bkz. aşağıdaki "Onay Kuyruğu ve Otomasyon Modu"
+  bölümü — bekleyen her aksiyonu tek tek "Onayla"/"Reddet" ile işleyebilirsiniz),
+  son çalıştırma çıktısı, `logs/actions.jsonl` kayıtları, 7 günlük
   özet. "Yenile" düğmesiyle güncellenir.
 
 Tarayıcı tabanlı bir alternatif isterseniz `web_ui.py` (Flask, sadece
@@ -112,6 +115,57 @@ nasıl değerlendireceğini belirler:
 
 Farklı hesapların/kapsamların farklı hedefleri olabilir; şu an tek bir
 global ayar olarak uygulanıyor (per-kampanya override yok).
+
+`awareness` modunda karar motoru her ad set'i şu sınıflandırmayla
+değerlendirir (sistem promptuna gömülü, `decision_engine.py`):
+
+- 🟢 **SAĞLIKLI**: engagement rate hesap ortalamasının üzerinde VEYA CPM
+  ortalamanın altında, frequency < 3.5, ≥1000 impression.
+- 🟡 **İZLENMELİ**: <1000 impression veya yetersiz veri → sadece
+  `no_action` önerilir (istatistiksel olarak anlamlı değil).
+- 🔴 **ZAYIF**: engagement ortalamanın ~%40+ altında VE ≥1000 impression,
+  YA DA frequency ≥3.5 (reklam yorgunluğu), YA DA CPM ortalamanın 2 katından
+  fazla.
+
+🔴 ZAYIF bir ad set için karar motoru direkt `pause` önermez; her ad set'e
+eklenen `recent_history` (son `logs/actions.jsonl` kayıtlarının özeti,
+`data_fetcher.py`'de üretilir) alanına bakarak kademeli ilerler: önce
+bütçe %50 azaltma önerilir, sadece daha önce (5+ gün önce) zaten bir
+bütçe kesintisi yapılmış VE hâlâ ZAYIF ise `pause` önerilir.
+
+`BRAND_CONTEXT` (opsiyonel, boş bırakılabilir) serbest metin bir env
+değişkenidir; ayarlanırsa karar motorunun sistem promptuna eklenir — bu,
+aracı belirli bir markanın sesi/hedef kitlesi/ton kısıtlarına göre (ör.
+"abartılı iddialardan kaçın", "18-45 yaş ebeveyn kitlesi") özelleştirmenizi
+sağlar, ama araç genel olarak marka-agnostik kalır.
+
+## Onay Kuyruğu ve Otomasyon Modu
+
+`AUTOMATION_MODE` (varsayılan `"onayli"`) guardrail'den geçmiş bir
+aksiyonun **hemen mi uygulanacağını yoksa önce insan onayı mı bekleyeceğini**
+belirler — bu, `DRY_RUN`'dan tamamen ayrı bir güvenlik katmanıdır:
+
+- **`onayli`** (varsayılan, güvenli): Guardrail'i geçen her aksiyon
+  doğrudan uygulanmaz; `logs/approval_queue.jsonl`'e eklenir ve
+  `queued_for_approval` olarak loglanır. Bekleyen aksiyonları görmek ve
+  onaylamak/reddetmek için masaüstü uygulamasındaki **"Onay Kuyruğu"**
+  sekmesini kullanın — "Onayla" dediğinizde aksiyon `action_executor`'a
+  gider ve (DRY_RUN ayarına göre) gerçek uygulanır veya simüle edilir;
+  "Reddet" dediğinizde hiçbir API çağrısı yapılmadan `rejected` olarak loglanır.
+- **`tam_otomatik`**: Guardrail'i geçen aksiyonlar onay beklemeden direkt
+  `action_executor`'a gider (FAZ 0-10'un orijinal davranışı).
+
+> **Önemli:** `AUTOMATION_MODE` ayarlanmamışsa varsayılan `"onayli"`dır.
+> Daha önce doğrudan uygulama (direkt `DRY_RUN=false`, onay katmanı yok)
+> ile çalışıyorsanız, bu davranışı korumak için `.env`'e
+> `AUTOMATION_MODE=tam_otomatik` eklemeniz gerekir — aksi halde bir sonraki
+> çalıştırmada hiçbir aksiyon otomatik uygulanmaz, hepsi onay kuyruğuna
+> düşer.
+
+Karar motorunun ürettiği her aksiyona ayrıca bir `guven_skoru`
+(yüksek/orta/düşük) eklenir — bu guardrail'i **geçirmez/geçirmez**
+şeklinde kullanılmaz (programatik bir eşik değildir), sadece onay
+kuyruğunda insan gözden geçirene bilgi amaçlı gösterilir.
 
 ## Kapsamı Sınırlama
 

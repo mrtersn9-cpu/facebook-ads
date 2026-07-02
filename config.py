@@ -45,11 +45,23 @@ class Config:
     # (varsayılan davranış, FAZ 0-7'de yazılan mantık).
     CAMPAIGN_OBJECTIVE = os.environ.get("CAMPAIGN_OBJECTIVE", "awareness").strip().lower()
 
+    # Serbest metin: markanın sesi/hedef kitlesi/ton tercihleri. Ayarlanırsa
+    # karar motorunun sistem promptuna eklenir (ör. eğitim sektörü için
+    # "abartılı başarı vaadi verme" gibi marka-özel kurallar). Boşsa jenerik
+    # davranış korunur.
+    BRAND_CONTEXT = os.environ.get("BRAND_CONTEXT", "")
+
     # --- Operasyon ---
     DRY_RUN = _bool("DRY_RUN", True)
     KILL_SWITCH = _bool("KILL_SWITCH", False)
     RUN_INTERVAL_HOURS = _float("RUN_INTERVAL_HOURS", 4)
     LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+    # "onayli" (varsayılan, güvenli): guardrail'den geçen her aksiyon insan
+    # onayı bekleyen bir kuyruğa (logs/approval_queue.jsonl) eklenir, DRY_RUN
+    # durumundan bağımsız olarak otomatik uygulanmaz. "tam_otomatik":
+    # aksiyonlar DRY_RUN'a göre doğrudan uygulanır/simüle edilir (FAZ 0-12
+    # davranışı, önceki gibi).
+    AUTOMATION_MODE = os.environ.get("AUTOMATION_MODE", "onayli").strip().lower()
 
     # --- Guardrail sabitleri ---
     MAX_DAILY_BUDGET_TOTAL = _float("MAX_DAILY_BUDGET_TOTAL", 100.0)

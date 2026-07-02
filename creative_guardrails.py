@@ -23,6 +23,17 @@ BANNED_PHRASES = [
     "tıbbi olarak kanıtlanmış",
     "hastalığı tedavi eder",
     "yan etkisi yok",
+    # Eğitim sektörü (sınav hazırlık) için abartılı/garanti/korku temelli iddialar:
+    "kesin kazan",
+    "garanti kazan",
+    "%100 başarı",
+    "sınavı garanti",
+    "üniversiteyi garantile",
+    "kesin başarı",
+    "başarısız olursan",
+    "kaybetme riski",
+    "herkes kazanıyor",
+    "şansını kaçırma",
 ]
 
 
