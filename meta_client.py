@@ -254,6 +254,7 @@ class MetaClient:
         instagram_media_id: str,
         call_to_action_type: str | None = None,
         call_to_action_link: str | None = None,
+        instagram_actor_id: str | None = None,
     ) -> dict:
         """Seçenek A: var olan organik Instagram gönderisini (Reels dahil)
         olduğu gibi reklam creative'i olarak kullanır — görsel/video
@@ -264,6 +265,12 @@ class MetaClient:
         object_story_id oluşturacak bir Sayfa gönderisi karşılığı yok.
         `source_instagram_media_id` doğrudan IG media id'sini kabul eder ve
         hem Feed hem Reels içerik için çalışır.
+
+        `instagram_actor_id` verilirse (Instagram Business Account id),
+        Meta'ya reklamı hangi Instagram hesabı adına yayınlayacağını açıkça
+        bildirir — bu olmadan Meta bazı durumlarda gönderiyle eşleşen
+        Facebook video kaydını bulamayıp "video Facebook'a yüklenmemiş"
+        gibi yanıltıcı bir hata verebiliyor.
 
         `call_to_action_type` verilirse (ör. "MESSAGE_PAGE" — mesaja
         yönlendir) bir CTA eklenir. Mesaja yönlendirme CTA'ları için Meta
@@ -278,6 +285,8 @@ class MetaClient:
                 "source_instagram_media_id": instagram_media_id,
             }
         payload = {"name": name, "source_instagram_media_id": instagram_media_id}
+        if instagram_actor_id is not None:
+            payload["instagram_actor_id"] = instagram_actor_id
         if call_to_action_type is not None:
             cta = {"type": call_to_action_type}
             if call_to_action_link is not None:

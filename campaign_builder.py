@@ -60,6 +60,7 @@ def build_campaign_from_creative(creative: dict, post: dict, client: MetaClient 
             instagram_media_id=post["id"],
             call_to_action_type=CREATIVE_CALL_TO_ACTION,
             call_to_action_link=f"https://ig.me/m/{Config.IG_USERNAME}" if Config.IG_USERNAME else None,
+            instagram_actor_id=Config.IG_BUSINESS_ACCOUNT_ID or None,
         )
         created["creative_id"] = ad_creative["id"]
 

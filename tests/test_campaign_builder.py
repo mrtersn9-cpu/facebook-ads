@@ -34,7 +34,7 @@ class FakeClient:
             raise MetaAPIError("adset failed")
         return {"id": "adset_1", "status": "PAUSED"}
 
-    def create_ad_creative(self, name, instagram_media_id, call_to_action_type=None, call_to_action_link=None):
+    def create_ad_creative(self, name, instagram_media_id, call_to_action_type=None, call_to_action_link=None, instagram_actor_id=None):
         self.calls.append("create_ad_creative")
         if self.fail_at == "create_ad_creative":
             raise MetaAPIError("creative failed")

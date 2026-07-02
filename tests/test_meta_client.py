@@ -346,6 +346,22 @@ def test_create_ad_creative_real_mode_omits_cta_by_default(real_mode, monkeypatc
     client.create_ad_creative(name="Test", instagram_media_id="ig_media_1")
 
     assert "call_to_action" not in captured
+    assert "instagram_actor_id" not in captured
+
+
+def test_create_ad_creative_real_mode_sends_instagram_actor_id_when_given(real_mode, monkeypatch):
+    captured = {}
+
+    def fake_post(url, data=None, timeout=None):
+        captured.update(data)
+        return FakeResponse(200, {"id": "real_creative_1"})
+
+    monkeypatch.setattr(meta_client.requests, "post", fake_post)
+
+    client = MetaClient()
+    client.create_ad_creative(name="Test", instagram_media_id="ig_media_1", instagram_actor_id="17841404833072091")
+
+    assert captured["instagram_actor_id"] == "17841404833072091"
 
 
 def test_create_ad_creative_real_mode_sends_call_to_action_when_given(real_mode, monkeypatch):
