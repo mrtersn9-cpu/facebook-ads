@@ -58,6 +58,8 @@ def _run_script(script_name: str) -> dict:
         [sys.executable, script_name, "--once"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=RUN_TIMEOUT_SECONDS,
         cwd=".",
     )

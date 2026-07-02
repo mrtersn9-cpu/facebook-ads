@@ -11,6 +11,7 @@ Kullanım:
 """
 import argparse
 import logging
+import sys
 
 from config import Config
 from ig_client import IGClient
@@ -20,6 +21,15 @@ from creative_guardrails import CreativeGuardrailViolation, apply_creative_guard
 from campaign_builder import build_campaigns_from_creatives
 from logger import log_action
 from notifier import notify_guardrail_violation, notify_new_campaign_pending_review
+
+# Windows konsolları varsayılan olarak UTF-8 kullanmayabilir; bu, Türkçe
+# karakterlerin bozuk görünmesine yol açar.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except (ValueError, OSError):
+            pass
 
 logging.basicConfig(
     level=getattr(logging, Config.LOG_LEVEL.upper(), logging.INFO),

@@ -169,6 +169,8 @@ class App:
                 [sys.executable, script_name, "--once"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=RUN_TIMEOUT_SECONDS,
             )
             output = (

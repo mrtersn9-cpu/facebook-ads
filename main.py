@@ -6,6 +6,7 @@ Kullanım:
 """
 import argparse
 import logging
+import sys
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -17,6 +18,15 @@ from action_executor import execute_actions, install_signal_handlers
 from logger import log_action
 from meta_client import check_token_expiry
 from notifier import notify_guardrail_violation, notify_run_summary
+
+# Windows konsolları varsayılan olarak UTF-8 kullanmayabilir; bu, Türkçe
+# karakterlerin ("başlıyor" -> "ba?l?yor") bozuk görünmesine yol açar.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except (ValueError, OSError):
+            pass
 
 logging.basicConfig(
     level=getattr(logging, Config.LOG_LEVEL.upper(), logging.INFO),
