@@ -110,16 +110,25 @@ class MetaClient:
             code = error.get("code")
             message = error.get("message", payload)
 
+            detail_parts = []
+            if error.get("error_subcode"):
+                detail_parts.append(f"subcode={error['error_subcode']}")
+            if error.get("error_user_title"):
+                detail_parts.append(f"başlık={error['error_user_title']}")
+            if error.get("error_user_msg"):
+                detail_parts.append(f"detay={error['error_user_msg']}")
+            detail_suffix = f" ({', '.join(detail_parts)})" if detail_parts else ""
+
             if code in AUTH_ERROR_CODES:
                 raise MetaAuthError(
-                    f"Graph API auth hatası (code={code}): {message}. "
+                    f"Graph API auth hatası (code={code}): {message}{detail_suffix}. "
                     "Token süresi dolmuş/geçersiz olabilir; retry yapılmayacak, "
                     "token'ın yenilenmesi gerekiyor."
                 )
             if code in RATE_LIMIT_ERROR_CODES:
-                raise MetaRateLimitError(f"Graph API rate-limit hatası (code={code}): {message}")
+                raise MetaRateLimitError(f"Graph API rate-limit hatası (code={code}): {message}{detail_suffix}")
 
-            raise MetaAPIError(f"Graph API hatası (code={code}): {message}")
+            raise MetaAPIError(f"Graph API hatası (code={code}): {message}{detail_suffix}")
         return payload
 
     # --- okuma uçları ---
@@ -173,20 +182,46 @@ class MetaClient:
     # HİÇBİRİNDE bir "status" parametresi YOKTUR — PAUSED değeri payload'a
     # sabit olarak yazılır, dışarıdan hiçbir şekilde override edilemez.
 
-    def create_campaign(self, name: str, objective: str) -> dict:
+    def create_campaign(self, name: str, objective: str, special_ad_categories: list[str] | None = None) -> dict:
+        # Meta, 2020'den beri her kampanyada special_ad_categories beyanı
+        # zorunlu tutuyor (konut/istihdam/kredi/politik reklam ayrımı için).
+        # Bu proje bu kategorilerden hiçbirine girmiyor, bu yüzden varsayılan
+        # olarak "NONE" kullanılıyor.
+        categories = special_ad_categories if special_ad_categories is not None else ["NONE"]
+
         if Config.META_MOCK_MODE:
             return {
                 "id": f"mock_campaign_{uuid.uuid4().hex[:8]}",
                 "name": name,
                 "objective": objective,
+                "special_ad_categories": categories,
                 "status": "PAUSED",
             }
         return self._post(
             f"act_{self.ad_account_id}/campaigns",
-            {"name": name, "objective": objective, "status": "PAUSED"},
+            {
+                "name": name,
+                "objective": objective,
+                "special_ad_categories": json.dumps(categories),
+                "status": "PAUSED",
+                # Bütçeyi kampanya değil ad set seviyesinde yönetiyoruz
+                # (campaign_builder.py her ad set'e DEFAULT_NEW_ADSET_DAILY_BUDGET
+                # atar); bu yüzden Advantage Campaign Budget paylaşımı kapalı.
+                "is_adset_budget_sharing_enabled": False,
+            },
         )
 
-    def create_adset(self, campaign_id: str, name: str, daily_budget_cents: int, targeting: dict) -> dict:
+    def create_adset(
+        self,
+        campaign_id: str,
+        name: str,
+        daily_budget_cents: int,
+        targeting: dict,
+        optimization_goal: str = "IMPRESSIONS",
+        billing_event: str = "IMPRESSIONS",
+        bid_strategy: str = "LOWEST_COST_WITHOUT_CAP",
+        destination_type: str | None = None,
+    ) -> dict:
         if Config.META_MOCK_MODE:
             return {
                 "id": f"mock_adset_{uuid.uuid4().hex[:8]}",
@@ -195,30 +230,60 @@ class MetaClient:
                 "daily_budget": daily_budget_cents,
                 "status": "PAUSED",
             }
-        return self._post(
-            f"act_{self.ad_account_id}/adsets",
-            {
-                "campaign_id": campaign_id,
-                "name": name,
-                "daily_budget": daily_budget_cents,
-                "targeting": json.dumps(targeting),
-                "status": "PAUSED",
-            },
-        )
+        payload = {
+            "campaign_id": campaign_id,
+            "name": name,
+            "daily_budget": daily_budget_cents,
+            "targeting": json.dumps(targeting),
+            "optimization_goal": optimization_goal,
+            "billing_event": billing_event,
+            "bid_strategy": bid_strategy,
+            "status": "PAUSED",
+        }
+        # "Mesaja yönlendir" (click-to-message) reklamları için: kullanıcı
+        # harici bir web sitesine değil, Instagram Direct/Messenger'a
+        # yönlendirilir. optimization_goal genelde "CONVERSATIONS" ile
+        # birlikte kullanılır.
+        if destination_type is not None:
+            payload["destination_type"] = destination_type
+        return self._post(f"act_{self.ad_account_id}/adsets", payload)
 
-    def create_ad_creative(self, name: str, object_story_id: str) -> dict:
-        """Seçenek A: var olan organik gönderiyi object_story_id ile reklam
-        creative'i olarak kullanır — görsel/video yeniden yüklenmez."""
+    def create_ad_creative(
+        self,
+        name: str,
+        instagram_media_id: str,
+        call_to_action_type: str | None = None,
+        call_to_action_link: str | None = None,
+    ) -> dict:
+        """Seçenek A: var olan organik Instagram gönderisini (Reels dahil)
+        olduğu gibi reklam creative'i olarak kullanır — görsel/video
+        yeniden yüklenmez.
+
+        `source_instagram_media_id` kullanılıyor; `object_story_id`
+        (page_id + post_id) Reels için çalışmıyor çünkü Reels'lerin
+        object_story_id oluşturacak bir Sayfa gönderisi karşılığı yok.
+        `source_instagram_media_id` doğrudan IG media id'sini kabul eder ve
+        hem Feed hem Reels içerik için çalışır.
+
+        `call_to_action_type` verilirse (ör. "MESSAGE_PAGE" — mesaja
+        yönlendir) bir CTA eklenir. Mesaja yönlendirme CTA'ları için Meta
+        `call_to_action.value.link` alanında bir hedef ister — Instagram
+        Direct'e mesaj başlatmak için `https://ig.me/m/<kullanıcı_adı>`
+        formatı kullanılır (`call_to_action_link` ile verilir).
+        """
         if Config.META_MOCK_MODE:
             return {
                 "id": f"mock_creative_{uuid.uuid4().hex[:8]}",
                 "name": name,
-                "object_story_id": object_story_id,
+                "source_instagram_media_id": instagram_media_id,
             }
-        return self._post(
-            f"act_{self.ad_account_id}/adcreatives",
-            {"name": name, "object_story_id": object_story_id},
-        )
+        payload = {"name": name, "source_instagram_media_id": instagram_media_id}
+        if call_to_action_type is not None:
+            cta = {"type": call_to_action_type}
+            if call_to_action_link is not None:
+                cta["value"] = {"link": call_to_action_link}
+            payload["call_to_action"] = json.dumps(cta)
+        return self._post(f"act_{self.ad_account_id}/adcreatives", payload)
 
     def create_ad(self, adset_id: str, creative_id: str, name: str) -> dict:
         if Config.META_MOCK_MODE:

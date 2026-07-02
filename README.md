@@ -162,9 +162,12 @@ creative_generator.py     Claude ile reklam metni üretimi (organik caption ≠ 
 implementasyonu FAZ 12'de yapıldı:
 
 - **Seçenek A (düşük risk, uygulanan bu):** Var olan organik gönderiyi
-  `object_story_id` (`{META_PAGE_ID}_{post_id}`) ile olduğu gibi reklam
-  creative'i olarak kullanmak ("boost" mantığı) — görsel/video yeniden
-  yüklenmez, en az teknik risk.
+  `source_instagram_media_id` ile olduğu gibi reklam creative'i olarak
+  kullanmak ("boost" mantığı) — görsel/video yeniden yüklenmez, en az
+  teknik risk. (İlk implementasyon `object_story_id` kullanıyordu ama bu,
+  Reels için çalışmıyor — Reels'lerin karşılığı bir Sayfa gönderisi
+  olmadığından `source_instagram_media_id`'ye geçildi; bu alan hem Feed hem
+  Reels içerik için çalışıyor.)
 - **Seçenek B (daha esnek, daha riskli, uygulanmadı):** Medyayı
   `/act_<id>/adimages` veya `/act_<id>/advideos` ile yeniden yükleyip
   sıfırdan bir `ad_creative` oluşturmak — daha fazla kontrol verir ama daha
@@ -204,6 +207,31 @@ run_creative_pipeline.py   Ayrı, isteğe bağlı komut: python run_creative_pip
   tetiklenmez — insan bunu bilinçli olarak çalıştırmalıdır.
 - Her yeni `PAUSED` kampanya için (Slack ayarlıysa) "incelemeni bekliyor"
   bildirimi + Ads Manager linki gönderilir.
+
+**Gerçek hesapla canlı test sırasında bulunan Meta API gereksinimleri**
+(hepsi `meta_client.py`'ye eklendi, hiçbiri CLAUDE.md'nin orijinal
+planında yoktu — Meta'nın kendi platform kısıtlamaları):
+- `create_campaign`: `special_ad_categories` (varsayılan `["NONE"]`) ve
+  `is_adset_budget_sharing_enabled=False` (bütçe kampanya değil ad set
+  seviyesinde yönetildiği için) zorunlu.
+- `create_adset`: `optimization_goal`, `billing_event`, `bid_strategy`
+  (varsayılan `LOWEST_COST_WITHOUT_CAP`) zorunlu; hesabın para biriminde
+  bir minimum günlük bütçe eşiği var (`DEFAULT_NEW_ADSET_DAILY_BUDGET`'ı
+  buna göre ayarlayın — TL hesaplarda ~₺47+ gerekebiliyor).
+  "Mesaja yönlendir" reklamları için `destination_type="INSTAGRAM_DIRECT"`
+  + `optimization_goal="CONVERSATIONS"` kullanılır.
+- `create_ad_creative`: mesaj CTA'sı için `call_to_action_type`
+  `"INSTAGRAM_MESSAGE"` olmalı (`"MESSAGE_PAGE"` sadece Messenger/Facebook
+  için geçerli, Instagram'da desteklenmiyor) ve `call_to_action_link`
+  olarak `https://ig.me/m/<IG_USERNAME>` deep-link'i gerekiyor.
+- **Reels kısıtlaması:** Facebook Sayfası'na çapraz paylaşılmamış Reels'ler
+  reklama çevrilemiyor ("Instagram Videosunun Facebook'a Yüklenmesi
+  Zorunludur" hatası) — bu bir Meta platform kısıtlaması, kodla çözülemez;
+  gönderiyi yayınlarken Sayfa'ya da paylaşmanız gerekir.
+- Meta App'in **Live mode**'da olması gerekir (Development mode'daki
+  uygulamalar başkalarının içeriğinden reklam creative'i oluşturamaz) —
+  bunun için de geçerli bir Gizlilik Politikası URL'si (App Settings ->
+  Basic) şart.
 - **Gerçek hesapla ilk canlı deneme sadece insan, Ads Manager'da oluşan
   `PAUSED` reklamı manuel gözden geçirip elle `ACTIVE` yaptıktan sonra**
   tamamlanmış sayılır (FAZ 8'in kademeli rollout mantığına benzer şekilde).

@@ -45,6 +45,17 @@ def test_broken_json_returns_empty_list_and_logs(monkeypatch, tmp_path):
     assert (tmp_path / "logs" / "decision_errors.log").exists()
 
 
+def test_markdown_fenced_json_is_parsed(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    payload = json.dumps([{"adset_id": "1", "action": "pause", "reason": "test"}])
+    _patch_anthropic(monkeypatch, f"```json\n{payload}\n```")
+
+    actions = decision_engine.get_action_recommendations([{"adset_id": "1", "spend": 10}])
+
+    assert len(actions) == 1
+    assert actions[0]["adset_id"] == "1"
+
+
 def test_non_list_json_returns_empty_list(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     _patch_anthropic(monkeypatch, json.dumps({"not": "a list"}))

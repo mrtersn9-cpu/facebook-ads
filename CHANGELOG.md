@@ -145,3 +145,36 @@ yazılıyor ve `execute_actions()`'ın döndürdüğü özet sözlüğüne sayı
 aksiyon, gerekçe) ve guardrail'in her reddini konsola basıyor — bu aynı
 zamanda masaüstü uygulamasının "Son Çalıştırma Çıktısı" sekmesindeki
 eksikliği de gideriyor.
+
+## Fix — Türkçe karakter bozukluğu (2026-07-02)
+Windows konsolunda Python'ın stdout/stderr'i varsayılan olarak UTF-8
+kullanmıyordu, bu yüzden "başlıyor" gibi kelimeler "ba?l?yor" şeklinde
+bozuk görünüyordu. `main.py`/`run_creative_pipeline.py` artık
+`sys.stdout`/`stderr`'i UTF-8'e zorluyor; `desktop_app.py`/`web_ui.py`
+alt süreç çıktısını da UTF-8 olarak decode ediyor.
+
+## Fix — LLM JSON çıktısında markdown fence (2026-07-02)
+Claude bazen "sadece JSON döndür" talimatına rağmen cevabı ```` ```json ```` 
+ile sarıyordu, bu da `json.loads()`'ı bozuyordu (creative_generator.py'de
+gerçek hesapla canlı olarak yakalandı). `llm_utils.strip_json_markdown_fence()`
+eklendi ve hem `decision_engine.py` hem `creative_generator.py`'de
+`json.loads()`'tan önce kullanılıyor.
+
+## FAZ 12 canlı doğrulama — gerçek Meta API gereksinimleri (2026-07-02)
+Gerçek hesap + gerçek Instagram API izinleriyle (`instagram_basic`,
+`instagram_manage_insights`) uçtan uca ilk canlı deneme yapıldı. Bu süreçte
+CLAUDE.md'nin planında öngörülmeyen, Meta'nın kendi platform
+gereksinimlerinden kaynaklanan birkaç gerçek API hatası bulundu ve
+düzeltildi (bkz. yukarıdaki README bölümü): `special_ad_categories`,
+`is_adset_budget_sharing_enabled`, `billing_event`/`optimization_goal`/
+`bid_strategy`, minimum ad set bütçesi, Reels için `object_story_id` yerine
+`source_instagram_media_id`, mesaj CTA'sı için `call_to_action_type=
+"INSTAGRAM_MESSAGE"` + `https://ig.me/m/<username>` deep-link, ve Meta
+App'in Live mode'da olması gerekliliği (bunun için de geçerli bir Gizlilik
+Politikası sayfası).
+
+Sonuç: gerçek bir Instagram gönderisinden **tam otomatik, uçtan uca, gerçek
+ve PAUSED** bir kampanya→ad set→creative→reklam zinciri başarıyla
+oluşturuldu ve `logs/actions.jsonl`'e loglandı. Bu süreçte oluşan çok
+sayıda başarısız/yarım deneme (`campaign_builder.py`'nin tasarımı gereği
+temizlenmeden bırakıldı) Ads Manager'dan manuel temizlendi/temizlenmeli.

@@ -11,6 +11,7 @@ import logging
 import anthropic
 
 from config import Config
+from llm_utils import strip_json_markdown_fence
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def generate_creative_for_post(post: dict) -> dict | None:
     text = "".join(block.text for block in message.content if block.type == "text")
 
     try:
-        creative = json.loads(text)
+        creative = json.loads(strip_json_markdown_fence(text))
     except (json.JSONDecodeError, TypeError) as exc:
         logger.error("Creative JSON parse hatası (media_id=%s): %s. Ham cevap: %r", post.get("id"), exc, text[:1000])
         return None

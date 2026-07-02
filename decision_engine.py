@@ -11,6 +11,7 @@ import os
 import anthropic
 
 from config import Config
+from llm_utils import strip_json_markdown_fence
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +142,7 @@ def get_action_recommendations(snapshot: list[dict]) -> list[dict]:
     text = "".join(block.text for block in message.content if block.type == "text")
 
     try:
-        actions = json.loads(text)
+        actions = json.loads(strip_json_markdown_fence(text))
     except (json.JSONDecodeError, TypeError) as exc:
         _log_decision_error(f"JSON parse hatası: {exc}. Ham cevap: {text[:1000]!r}")
         return []

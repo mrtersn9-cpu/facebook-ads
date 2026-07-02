@@ -28,13 +28,13 @@ class FakeClient:
             raise MetaAPIError("campaign failed")
         return {"id": "camp_1", "status": "PAUSED"}
 
-    def create_adset(self, campaign_id, name, daily_budget_cents, targeting):
+    def create_adset(self, campaign_id, name, daily_budget_cents, targeting, optimization_goal=None, destination_type=None):
         self.calls.append("create_adset")
         if self.fail_at == "create_adset":
             raise MetaAPIError("adset failed")
         return {"id": "adset_1", "status": "PAUSED"}
 
-    def create_ad_creative(self, name, object_story_id):
+    def create_ad_creative(self, name, instagram_media_id, call_to_action_type=None, call_to_action_link=None):
         self.calls.append("create_ad_creative")
         if self.fail_at == "create_ad_creative":
             raise MetaAPIError("creative failed")
@@ -51,7 +51,7 @@ def test_full_chain_succeeds_and_logs_applied(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     client = FakeClient()
 
-    result = build_campaign_from_creative(CREATIVE, POST, page_id="page1", client=client)
+    result = build_campaign_from_creative(CREATIVE, POST, client=client)
 
     assert result == {
         "media_id": "m1",
@@ -70,7 +70,7 @@ def test_failure_midway_logs_partial_ids_and_reraises(monkeypatch, tmp_path):
     client = FakeClient(fail_at="create_ad_creative")
 
     try:
-        build_campaign_from_creative(CREATIVE, POST, page_id="page1", client=client)
+        build_campaign_from_creative(CREATIVE, POST, client=client)
         assert False, "MetaAPIError bekleniyordu"
     except MetaAPIError:
         pass
@@ -101,7 +101,7 @@ def test_batch_continues_after_one_failure(monkeypatch, tmp_path):
     creatives = [{**CREATIVE, "media_id": f"m{i}"} for i in range(3)]
     posts_by_id = {f"m{i}": {"id": f"m{i}"} for i in range(3)}
 
-    summary = build_campaigns_from_creatives(creatives, posts_by_id, page_id="page1", client=client)
+    summary = build_campaigns_from_creatives(creatives, posts_by_id, client=client)
 
     assert summary["created"] == 2
     assert summary["errors"] == 1

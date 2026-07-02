@@ -91,7 +91,7 @@ def run_once() -> None:
         )
 
     posts_by_media_id = {p["id"]: p for p in top_posts}
-    summary = build_campaigns_from_creatives(approved, posts_by_media_id, page_id=Config.META_PAGE_ID)
+    summary = build_campaigns_from_creatives(approved, posts_by_media_id)
 
     for result in summary["results"]:
         if result.get("status") == "created":

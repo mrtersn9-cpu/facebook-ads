@@ -213,6 +213,15 @@ def test_create_campaign_mock_mode_is_always_paused(monkeypatch):
     assert campaign["id"]
 
 
+def test_create_campaign_defaults_special_ad_categories_to_none(monkeypatch):
+    monkeypatch.setattr(config.Config, "META_MOCK_MODE", True)
+    client = MetaClient()
+
+    campaign = client.create_campaign(name="Test Kampanya", objective="OUTCOME_ENGAGEMENT")
+
+    assert campaign["special_ad_categories"] == ["NONE"]
+
+
 def test_create_adset_mock_mode_is_always_paused(monkeypatch):
     monkeypatch.setattr(config.Config, "META_MOCK_MODE", True)
     client = MetaClient()
@@ -231,6 +240,31 @@ def test_create_ad_mock_mode_is_always_paused(monkeypatch):
     assert ad["status"] == "PAUSED"
 
 
+def test_create_ad_creative_mock_mode_uses_source_instagram_media_id(monkeypatch):
+    monkeypatch.setattr(config.Config, "META_MOCK_MODE", True)
+    client = MetaClient()
+
+    creative = client.create_ad_creative(name="Test Creative", instagram_media_id="ig_media_1")
+
+    assert creative["source_instagram_media_id"] == "ig_media_1"
+
+
+def test_create_ad_creative_real_mode_sends_source_instagram_media_id(real_mode, monkeypatch):
+    captured = {}
+
+    def fake_post(url, data=None, timeout=None):
+        captured.update(data)
+        return FakeResponse(200, {"id": "real_creative_1"})
+
+    monkeypatch.setattr(meta_client.requests, "post", fake_post)
+
+    client = MetaClient()
+    client.create_ad_creative(name="Test Creative", instagram_media_id="ig_media_1")
+
+    assert captured["source_instagram_media_id"] == "ig_media_1"
+    assert "object_story_id" not in captured
+
+
 def test_create_campaign_real_mode_sends_paused_status(real_mode, monkeypatch):
     captured = {}
 
@@ -244,6 +278,8 @@ def test_create_campaign_real_mode_sends_paused_status(real_mode, monkeypatch):
     client.create_campaign(name="Test", objective="OUTCOME_ENGAGEMENT")
 
     assert captured["status"] == "PAUSED"
+    assert json.loads(captured["special_ad_categories"]) == ["NONE"]
+    assert captured["is_adset_budget_sharing_enabled"] is False
 
 
 def test_create_adset_real_mode_sends_paused_status(real_mode, monkeypatch):
@@ -259,6 +295,95 @@ def test_create_adset_real_mode_sends_paused_status(real_mode, monkeypatch):
     client.create_adset(campaign_id="c1", name="Test", daily_budget_cents=1000, targeting={"geo_locations": {}})
 
     assert captured["status"] == "PAUSED"
+    assert captured["optimization_goal"] == "IMPRESSIONS"
+    assert captured["billing_event"] == "IMPRESSIONS"
+    assert captured["bid_strategy"] == "LOWEST_COST_WITHOUT_CAP"
+    assert "destination_type" not in captured
+
+
+def test_create_adset_omits_destination_type_by_default(monkeypatch):
+    monkeypatch.setattr(config.Config, "META_MOCK_MODE", True)
+    client = MetaClient()
+
+    adset = client.create_adset(campaign_id="c1", name="Test", daily_budget_cents=1000, targeting={})
+
+    assert "destination_type" not in adset
+
+
+def test_create_adset_real_mode_sends_destination_type_when_given(real_mode, monkeypatch):
+    captured = {}
+
+    def fake_post(url, data=None, timeout=None):
+        captured.update(data)
+        return FakeResponse(200, {"id": "real_adset_1"})
+
+    monkeypatch.setattr(meta_client.requests, "post", fake_post)
+
+    client = MetaClient()
+    client.create_adset(
+        campaign_id="c1",
+        name="Test",
+        daily_budget_cents=1000,
+        targeting={},
+        optimization_goal="CONVERSATIONS",
+        destination_type="INSTAGRAM_DIRECT",
+    )
+
+    assert captured["destination_type"] == "INSTAGRAM_DIRECT"
+    assert captured["optimization_goal"] == "CONVERSATIONS"
+
+
+def test_create_ad_creative_real_mode_omits_cta_by_default(real_mode, monkeypatch):
+    captured = {}
+
+    def fake_post(url, data=None, timeout=None):
+        captured.update(data)
+        return FakeResponse(200, {"id": "real_creative_1"})
+
+    monkeypatch.setattr(meta_client.requests, "post", fake_post)
+
+    client = MetaClient()
+    client.create_ad_creative(name="Test", instagram_media_id="ig_media_1")
+
+    assert "call_to_action" not in captured
+
+
+def test_create_ad_creative_real_mode_sends_call_to_action_when_given(real_mode, monkeypatch):
+    captured = {}
+
+    def fake_post(url, data=None, timeout=None):
+        captured.update(data)
+        return FakeResponse(200, {"id": "real_creative_1"})
+
+    monkeypatch.setattr(meta_client.requests, "post", fake_post)
+
+    client = MetaClient()
+    client.create_ad_creative(name="Test", instagram_media_id="ig_media_1", call_to_action_type="MESSAGE_PAGE")
+
+    assert json.loads(captured["call_to_action"]) == {"type": "MESSAGE_PAGE"}
+
+
+def test_create_ad_creative_real_mode_includes_link_when_given(real_mode, monkeypatch):
+    captured = {}
+
+    def fake_post(url, data=None, timeout=None):
+        captured.update(data)
+        return FakeResponse(200, {"id": "real_creative_1"})
+
+    monkeypatch.setattr(meta_client.requests, "post", fake_post)
+
+    client = MetaClient()
+    client.create_ad_creative(
+        name="Test",
+        instagram_media_id="ig_media_1",
+        call_to_action_type="MESSAGE_PAGE",
+        call_to_action_link="https://ig.me/m/sonuc_yayinlari",
+    )
+
+    assert json.loads(captured["call_to_action"]) == {
+        "type": "MESSAGE_PAGE",
+        "value": {"link": "https://ig.me/m/sonuc_yayinlari"},
+    }
 
 
 def test_create_ad_real_mode_sends_paused_status(real_mode, monkeypatch):

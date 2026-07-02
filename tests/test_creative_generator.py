@@ -69,6 +69,24 @@ def test_broken_json_returns_none(monkeypatch):
     assert creative_generator.generate_creative_for_post(POST) is None
 
 
+def test_markdown_fenced_json_is_parsed(monkeypatch):
+    payload = json.dumps(
+        {
+            "media_id": "ig_media_1",
+            "primary_text": "Sınırlı süre! Yeni koleksiyonu şimdi keşfet.",
+            "headline": "Yeni Sezon Burada",
+            "description": "Hemen alışverişe başla.",
+            "reasoning": "Yüksek engagement.",
+        }
+    )
+    _patch_anthropic(monkeypatch, f"```json\n{payload}\n```")
+
+    creative = creative_generator.generate_creative_for_post(POST)
+
+    assert creative is not None
+    assert creative["media_id"] == "ig_media_1"
+
+
 def test_missing_field_returns_none(monkeypatch):
     payload = json.dumps(
         {
