@@ -47,27 +47,30 @@ Gerçek Meta hesabı/token'ı olmadan denemek için `.env`'de
 kampanya/ad set/insight verisiyle çalışır. `ANTHROPIC_API_KEY` her zaman
 gerekir (Claude çağrıları mock'lanmaz; bunlar gerçek ama ucuz API çağrılarıdır).
 
-## Web Dashboard (opsiyonel kolaylık aracı)
+## Masaüstü Uygulaması (opsiyonel kolaylık aracı)
 
-CLAUDE.md'deki faz planına ek, isteğe bağlı basit bir web arayüzü:
+CLAUDE.md'deki faz planına ek, isteğe bağlı bir masaüstü arayüzü
+(Tkinter — Python ile birlikte gelir, ek kurulum gerektirmez):
 
 ```bash
-python web_ui.py
-# Tarayıcıda http://127.0.0.1:5000 açın
+python desktop_app.py
 ```
 
-- Sadece **localhost**'ta dinler — gerçek hesap kimlik bilgileriyle
-  çalıştığı için kimlik doğrulaması eklemeden internete açık bir sunucuda
-  ASLA çalıştırmayın.
-- `DRY_RUN`/`KILL_SWITCH`/`META_MOCK_MODE`/`CAMPAIGN_OBJECTIVE` durumunu
-  **salt okunur** gösterir — bunları değiştirmek için hâlâ `.env`'yi elle
-  düzenlemeniz gerekir (dashboard'dan guardrail/DRY_RUN bypass edilemez).
-  DRY_RUN kapalıyken bu, buton tek tıkla **gerçek** aksiyon uygulanacağı
-  anlamına gelir; dashboard bunu turuncu bir rozetle vurgular.
-- "Çalıştır" düğmeleri mevcut `main.py --once` / `run_creative_pipeline.py
-  --once` komutlarını alt süreç olarak tetikler — yeni bir kod yolu değil,
-  sadece bir kolaylık katmanı.
-- Son `logs/actions.jsonl` kayıtlarını ve haftalık özeti gösterir.
+- Üstte `DRY_RUN`/`KILL_SWITCH`/`META_MOCK_MODE`/`IG_MOCK_MODE`/
+  `CAMPAIGN_OBJECTIVE`/hesap ID durumunu **salt okunur**, renkli gösterir
+  (`DRY_RUN=False` kırmızı, `KILL_SWITCH=True` kırmızı) — bunları
+  değiştirmek için hâlâ `.env`'yi elle düzenlemeniz gerekir; arayüzden
+  guardrail/DRY_RUN bypass edilemez.
+- İki düğme mevcut `main.py --once` / `run_creative_pipeline.py --once`
+  komutlarını arka planda (ayrı thread'de, arayüz donmadan) alt süreç
+  olarak tetikler — yeni bir kod yolu değil, sadece bir kolaylık katmanı.
+  `DRY_RUN=False` iken çalıştırmadan önce ekstra bir uyarı diyaloğu çıkar.
+- Sekmeler: son çalıştırma çıktısı, `logs/actions.jsonl` kayıtları, 7
+  günlük özet. "Yenile" düğmesiyle güncellenir.
+
+Tarayıcı tabanlı bir alternatif isterseniz `web_ui.py` (Flask, sadece
+localhost'ta dinler) de repoda mevcut — aynı salt-okunur/guardrail-bypass-yok
+prensipleriyle çalışır, ama varsayılan olarak masaüstü uygulaması önerilir.
 
 ## Guardrail Mantığı
 
