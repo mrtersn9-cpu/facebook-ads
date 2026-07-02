@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 import config
-from post_selector import select_top_posts
+from post_selector import list_candidate_posts, select_top_posts
 
 
 @pytest.fixture(autouse=True)
@@ -139,5 +139,36 @@ def test_only_video_defaults_to_config(monkeypatch):
     insights = {"img": {"reach": 100}, "vid": {"reach": 100}}
 
     result = select_top_posts(media, insights, top_n=5, min_age_hours=48)
+
+    assert [m["id"] for m in result] == ["vid"]
+
+
+def test_list_candidate_posts_returns_all_eligible_without_top_n_limit():
+    now = datetime.now(timezone.utc)
+    old_enough = now - timedelta(hours=100)
+    media = [
+        {"id": str(i), "like_count": i, "comments_count": 0, "timestamp": _iso(old_enough)}
+        for i in range(10)
+    ]
+    insights = {str(i): {"reach": 100} for i in range(10)}
+
+    result = list_candidate_posts(media, insights, min_age_hours=48)
+
+    assert len(result) == 10
+    assert [m["id"] for m in result] == [str(i) for i in reversed(range(10))]
+
+
+def test_list_candidate_posts_still_applies_age_and_video_filters():
+    now = datetime.now(timezone.utc)
+    too_recent = now - timedelta(hours=2)
+    old_enough = now - timedelta(hours=100)
+    media = [
+        {"id": "fresh", "media_type": "VIDEO", "like_count": 1, "comments_count": 0, "timestamp": _iso(too_recent)},
+        {"id": "img", "media_type": "IMAGE", "like_count": 1, "comments_count": 0, "timestamp": _iso(old_enough)},
+        {"id": "vid", "media_type": "VIDEO", "like_count": 1, "comments_count": 0, "timestamp": _iso(old_enough)},
+    ]
+    insights = {"fresh": {"reach": 100}, "img": {"reach": 100}, "vid": {"reach": 100}}
+
+    result = list_candidate_posts(media, insights, min_age_hours=48, only_video=True)
 
     assert [m["id"] for m in result] == ["vid"]

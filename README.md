@@ -65,8 +65,13 @@ python desktop_app.py
   komutlarını arka planda (ayrı thread'de, arayüz donmadan) alt süreç
   olarak tetikler — yeni bir kod yolu değil, sadece bir kolaylık katmanı.
   `DRY_RUN=False` iken çalıştırmadan önce ekstra bir uyarı diyaloğu çıkar.
-- Sekmeler: son çalıştırma çıktısı, `logs/actions.jsonl` kayıtları, 7
-  günlük özet. "Yenile" düğmesiyle güncellenir.
+- Sekmeler: **Gönderi Seç** (Instagram gönderilerini getirip checkbox'larla
+  hangilerine reklam çıkılacağını manuel seçebileceğiniz panel — "Seçili
+  Gönderiler İçin Reklam Oluştur" sadece işaretlediklerinizi
+  `run_creative_pipeline.py --once --media-ids ...` ile işler, otomatik
+  top-N seçimi devre dışı kalır ama guardrail'ler aynen çalışmaya devam
+  eder), son çalıştırma çıktısı, `logs/actions.jsonl` kayıtları, 7 günlük
+  özet. "Yenile" düğmesiyle güncellenir.
 
 Tarayıcı tabanlı bir alternatif isterseniz `web_ui.py` (Flask, sadece
 localhost'ta dinler) de repoda mevcut — aynı salt-okunur/guardrail-bypass-yok

@@ -12,12 +12,49 @@ def _parse_timestamp(ts: str) -> datetime:
     return dt
 
 
-def _engagement_rate(media: dict, insights: dict) -> float:
+def compute_engagement_rate(media: dict, insights: dict) -> float:
     reach = insights.get("reach", 0)
     if not reach:
         return 0.0
     engagement = media.get("like_count", 0) + media.get("comments_count", 0)
     return engagement / reach
+
+
+def _filter_and_score(
+    media_list: list[dict], insights_by_id: dict[str, dict], min_age_hours: float, only_video: bool
+) -> list[dict]:
+    now = datetime.now(timezone.utc)
+    candidates = []
+
+    for media in media_list:
+        if only_video and media.get("media_type") != "VIDEO":
+            continue
+
+        posted_at = _parse_timestamp(media["timestamp"])
+        age_hours = (now - posted_at).total_seconds() / 3600
+        if age_hours < min_age_hours:
+            continue
+
+        insights = insights_by_id.get(media["id"], {})
+        rate = compute_engagement_rate(media, insights)
+        candidates.append({**media, "engagement_rate": rate})
+
+    candidates.sort(key=lambda m: m["engagement_rate"], reverse=True)
+    return candidates
+
+
+def list_candidate_posts(
+    media_list: list[dict],
+    insights_by_id: dict[str, dict],
+    min_age_hours: float | None = None,
+    only_video: bool | None = None,
+) -> list[dict]:
+    """Yaş/tür filtresinden geçen TÜM gönderileri (top_n sınırı olmadan)
+    engagement_rate'e göre sıralı döner — manuel seçim arayüzü (panel) için.
+    """
+    min_age_hours = Config.IG_MIN_POST_AGE_HOURS if min_age_hours is None else min_age_hours
+    only_video = Config.IG_ONLY_VIDEO_POSTS if only_video is None else only_video
+    return _filter_and_score(media_list, insights_by_id, min_age_hours, only_video)
 
 
 def select_top_posts(
@@ -36,24 +73,5 @@ def select_top_posts(
     gönderileri elenir.
     """
     top_n = Config.IG_TOP_N_POSTS if top_n is None else top_n
-    min_age_hours = Config.IG_MIN_POST_AGE_HOURS if min_age_hours is None else min_age_hours
-    only_video = Config.IG_ONLY_VIDEO_POSTS if only_video is None else only_video
-
-    now = datetime.now(timezone.utc)
-    candidates = []
-
-    for media in media_list:
-        if only_video and media.get("media_type") != "VIDEO":
-            continue
-
-        posted_at = _parse_timestamp(media["timestamp"])
-        age_hours = (now - posted_at).total_seconds() / 3600
-        if age_hours < min_age_hours:
-            continue
-
-        insights = insights_by_id.get(media["id"], {})
-        rate = _engagement_rate(media, insights)
-        candidates.append({**media, "engagement_rate": rate})
-
-    candidates.sort(key=lambda m: m["engagement_rate"], reverse=True)
+    candidates = list_candidate_posts(media_list, insights_by_id, min_age_hours, only_video)
     return candidates[:top_n]

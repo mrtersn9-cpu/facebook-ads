@@ -15,7 +15,7 @@ import sys
 
 from config import Config
 from ig_client import IGClient
-from post_selector import select_top_posts
+from post_selector import compute_engagement_rate, select_top_posts
 from creative_generator import generate_creatives
 from creative_guardrails import CreativeGuardrailViolation, apply_creative_guardrails
 from campaign_builder import build_campaigns_from_creatives
@@ -38,7 +38,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def run_once() -> None:
+def run_once(media_ids: list[str] | None = None) -> None:
+    """`media_ids` verilirse (ör. panelden manuel seçim), otomatik
+    top-N/engagement seçimi atlanır; sadece belirtilen gönderiler işlenir.
+    Guardrail katmanı (creative_guardrails, campaign_builder) bu durumda
+    da aynen çalışır — manuel seçim otomatik seçimin yerini alır, guardrail
+    kontrollerinin yerini almaz."""
     logger.info("heartbeat: creative pipeline run_once başlıyor")
 
     if Config.KILL_SWITCH:
@@ -54,10 +59,25 @@ def run_once() -> None:
         return
 
     insights_by_id = {m["id"]: client.get_media_insights(m["id"]) for m in media}
-    top_posts = select_top_posts(media, insights_by_id)
-    if not top_posts:
-        print("Reklam adayı olabilecek yeterince olgun/performanslı gönderi yok.")
-        return
+
+    if media_ids:
+        wanted = set(media_ids)
+        top_posts = [
+            {**m, "engagement_rate": compute_engagement_rate(m, insights_by_id.get(m["id"], {}))}
+            for m in media
+            if m["id"] in wanted
+        ]
+        missing = wanted - {p["id"] for p in top_posts}
+        if missing:
+            print(f"Uyarı: şu gönderi ID'leri bulunamadı, atlanıyor: {', '.join(sorted(missing))}")
+        if not top_posts:
+            print("Belirtilen gönderi ID'lerinden hiçbiri bulunamadı.")
+            return
+    else:
+        top_posts = select_top_posts(media, insights_by_id)
+        if not top_posts:
+            print("Reklam adayı olabilecek yeterince olgun/performanslı gönderi yok.")
+            return
 
     creatives = generate_creatives(top_posts)
     if not creatives:
@@ -111,9 +131,15 @@ def main() -> None:
         "--once", action="store_true", required=True,
         help="Boru hattını bir kez çalıştır ve çık (tek desteklenen mod).",
     )
-    parser.parse_args()
+    parser.add_argument(
+        "--media-ids", default="",
+        help="Virgülle ayrılmış gönderi ID'leri (ör. panelden manuel seçim). "
+             "Verilirse otomatik top-N seçimi atlanır, sadece bunlar işlenir.",
+    )
+    args = parser.parse_args()
 
-    run_once()
+    media_ids = [m.strip() for m in args.media_ids.split(",") if m.strip()] or None
+    run_once(media_ids=media_ids)
 
 
 if __name__ == "__main__":
