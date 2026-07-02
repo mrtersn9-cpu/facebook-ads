@@ -114,3 +114,34 @@ reach/frequency/CPM'e bakmasını söylüyor.
 
 Gerçek hesapla doğrulandı: aynı ad set için bir sonraki çalıştırmada bot
 `no_action` önerdi (satış eksikliğine dayalı pause önerisi kayboldu).
+
+## Ek — Web Dashboard (2026-07-02)
+CLAUDE.md'nin faz planına ek, isteğe bağlı bir kolaylık aracı: `web_ui.py`
+(Flask, sadece `127.0.0.1`'de dinler). `DRY_RUN`/`KILL_SWITCH`/mock mod/
+`CAMPAIGN_OBJECTIVE` durumunu salt okunur gösterir, `logs/actions.jsonl`'i
+ve haftalık özeti listeler, iki düğme mevcut `main.py --once`/
+`run_creative_pipeline.py --once`'u alt süreç olarak tetikler. Guardrail/
+DRY_RUN mantığına hiçbir yeni kod yolu eklemez.
+
+## Ek — Masaüstü Uygulaması (2026-07-02)
+Kullanıcı tarayıcı yerine gerçek bir uygulama penceresi istedi: `desktop_app.py`
+(Tkinter — Python ile birlikte gelir, ek bağımlılık yok). Aynı salt-okunur
+durum paneli, aynı iki "çalıştır" düğmesi (arka planda thread'de, arayüz
+donmadan), sekmeli görünüm (son çıktı / loglar / haftalık özet). DRY_RUN
+kapalıyken ekstra onay diyaloğu. Pencere gerçekten açılıp ekran görüntüsüyle
+doğrulandı.
+
+## Fix — Gözlemlenebilirlik: no_action loglama ve detaylı çıktı (2026-07-02)
+Kullanıcı geri bildirimi: gerçek hesapla çalıştırdığında konsolda sadece
+sayı bazlı özet görünüyordu ("önerilen=1, uygulanan=0, dry_run=0"), Claude'un
+ne önerdiği/neden önerdiği hiçbir yerde görünmüyordu. Sebep:
+`action_executor.py` "no_action" kararını hem loglamadan hem ekrana
+yazmadan tamamen atlıyordu — CLAUDE.md Değişmez Kural #4'e ("her aksiyon
+loglanır") aykırı bir boşluktu.
+
+Düzeltildi: `no_action` artık `logs/actions.jsonl`'e "no_action" statüsüyle
+yazılıyor ve `execute_actions()`'ın döndürdüğü özet sözlüğüne sayılıyor.
+`main.py`'nin `run_once()`'ı artık Claude'un her önerisini (adset_id,
+aksiyon, gerekçe) ve guardrail'in her reddini konsola basıyor — bu aynı
+zamanda masaüstü uygulamasının "Son Çalıştırma Çıktısı" sekmesindeki
+eksikliği de gideriyor.

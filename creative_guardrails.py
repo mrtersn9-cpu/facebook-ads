@@ -70,8 +70,6 @@ def _count_campaigns_created_today() -> int:
                 count += 1
 
     return count
-
-
 def apply_creative_guardrails(creatives: list[dict]) -> tuple[list[dict], list[dict]]:
     """Creative önerilerini onaylanan/reddedilen olarak ikiye ayırır.
 
