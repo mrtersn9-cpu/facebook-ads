@@ -32,10 +32,10 @@ def execute_actions(actions: list[dict], client: MetaClient | None = None) -> di
     Bir kapatma sinyali (SIGINT/SIGTERM) alındığında mevcut aksiyon
     bitirilir ama yenisi başlatılmaz.
 
-    Dönüş: {"applied": n, "dry_run": n, "errors": n}
+    Dönüş: {"applied": n, "dry_run": n, "errors": n, "no_action": n}
     """
     client = client or MetaClient()
-    summary = {"applied": 0, "dry_run": 0, "errors": 0}
+    summary = {"applied": 0, "dry_run": 0, "errors": 0, "no_action": 0}
 
     for action in actions:
         if _shutdown_requested:
@@ -54,6 +54,15 @@ def execute_actions(actions: list[dict], client: MetaClient | None = None) -> di
         reason = action.get("reason", "")
 
         if action_type == "no_action":
+            log_action(
+                {
+                    "adset_id": adset_id,
+                    "action": action_type,
+                    "status": "no_action",
+                    "reason": reason,
+                }
+            )
+            summary["no_action"] += 1
             continue
 
         if Config.DRY_RUN:

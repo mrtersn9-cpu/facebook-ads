@@ -42,6 +42,14 @@ def run_once() -> None:
 
     actions = get_action_recommendations(snapshot)
 
+    if not actions:
+        print("Claude hiçbir aksiyon önermedi (veya cevap ayrıştırılamadı, bkz. logs/decision_errors.log).")
+    else:
+        print(f"\nClaude'un önerileri ({len(actions)}):")
+        for a in actions:
+            detail = f" -> {a.get('new_daily_budget')}" if a.get("action") == "update_budget" else ""
+            print(f"  [{a.get('adset_id')}] {a.get('action')}{detail}: {a.get('reason')}")
+
     try:
         approved, rejected = apply_guardrails(actions, snapshot)
     except GuardrailViolation as exc:
@@ -57,6 +65,11 @@ def run_once() -> None:
         notify_guardrail_violation(str(exc))
         return
 
+    if rejected:
+        print(f"\nGuardrail tarafından reddedilenler ({len(rejected)}):")
+        for r in rejected:
+            print(f"  [{r.get('adset_id')}] {r.get('action')}: {r.get('rejection_reason')}")
+
     for r in rejected:
         log_action(
             {
@@ -70,10 +83,10 @@ def run_once() -> None:
     summary = execute_actions(approved)
 
     print(
-        "Çalıştırma özeti: "
+        "\nÇalıştırma özeti: "
         f"önerilen={len(actions)}, guardrail_red={len(rejected)}, "
         f"uygulanan={summary['applied']}, dry_run={summary['dry_run']}, "
-        f"hata={summary['errors']}"
+        f"no_action={summary['no_action']}, hata={summary['errors']}"
     )
     notify_run_summary(summary, len(actions), len(rejected))
 

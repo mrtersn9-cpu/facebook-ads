@@ -51,20 +51,26 @@ def test_dry_run_never_calls_real_client(monkeypatch, tmp_path):
 
     summary = execute_actions(actions, client=ExplodingClient())
 
-    assert summary == {"applied": 0, "dry_run": 2, "errors": 0}
+    assert summary == {"applied": 0, "dry_run": 2, "errors": 0, "no_action": 0}
     logged = (tmp_path / "logs" / "actions.jsonl").read_text(encoding="utf-8").strip().splitlines()
     assert len(logged) == 2
     assert all(json.loads(line)["status"] == "dry_run" for line in logged)
 
 
-def test_no_action_is_skipped_without_logging(monkeypatch, tmp_path):
+def test_no_action_is_logged_but_not_counted_as_applied_or_dry_run(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(config.Config, "DRY_RUN", True)
 
-    summary = execute_actions([{"adset_id": "1", "action": "no_action", "reason": "test"}], client=ExplodingClient())
+    summary = execute_actions(
+        [{"adset_id": "1", "action": "no_action", "reason": "performans normal, müdahale gerekmiyor"}],
+        client=ExplodingClient(),
+    )
 
-    assert summary == {"applied": 0, "dry_run": 0, "errors": 0}
-    assert not (tmp_path / "logs" / "actions.jsonl").exists()
+    assert summary == {"applied": 0, "dry_run": 0, "errors": 0, "no_action": 1}
+    logged = [json.loads(line) for line in (tmp_path / "logs" / "actions.jsonl").read_text(encoding="utf-8").strip().splitlines()]
+    assert len(logged) == 1
+    assert logged[0]["status"] == "no_action"
+    assert logged[0]["reason"] == "performans normal, müdahale gerekmiyor"
 
 
 def test_partial_failures_continue_and_are_all_reported(monkeypatch, tmp_path):
@@ -81,7 +87,7 @@ def test_partial_failures_continue_and_are_all_reported(monkeypatch, tmp_path):
 
     summary = execute_actions(actions, client=PartialFailureClient())
 
-    assert summary == {"applied": 3, "dry_run": 0, "errors": 2}
+    assert summary == {"applied": 3, "dry_run": 0, "errors": 2, "no_action": 0}
     logged = [json.loads(line) for line in (tmp_path / "logs" / "actions.jsonl").read_text(encoding="utf-8").strip().splitlines()]
     assert len(logged) == 5
     statuses = {entry["adset_id"]: entry["status"] for entry in logged}
@@ -104,7 +110,7 @@ def test_shutdown_flag_stops_before_next_action_but_keeps_prior_results(monkeypa
 
     summary = execute_actions(actions, client=ExplodingClient())
 
-    assert summary == {"applied": 0, "dry_run": 0, "errors": 0}
+    assert summary == {"applied": 0, "dry_run": 0, "errors": 0, "no_action": 0}
     logged = [json.loads(line) for line in (tmp_path / "logs" / "actions.jsonl").read_text(encoding="utf-8").strip().splitlines()]
     assert len(logged) == 1
     assert logged[0]["status"] == "shutdown"

@@ -29,7 +29,7 @@ def notify_run_summary(summary: dict, proposed_count: int, rejected_count: int) 
         "Meta Ads Agent çalıştırma özeti: "
         f"önerilen={proposed_count}, guardrail_red={rejected_count}, "
         f"uygulanan={summary['applied']}, dry_run={summary['dry_run']}, "
-        f"hata={summary['errors']}"
+        f"no_action={summary.get('no_action', 0)}, hata={summary['errors']}"
     )
 
 
