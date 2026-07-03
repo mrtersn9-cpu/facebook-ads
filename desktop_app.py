@@ -10,12 +10,15 @@ Tkinter Python ile birlikte gelir; ek bir paket kurulumu gerekmez.
 Çalıştırma:
   python desktop_app.py
 """
+import io
 import json
 import subprocess
 import sys
 import threading
 import tkinter as tk
 from tkinter import messagebox, scrolledtext, ttk
+
+import requests
 
 import approval_queue
 from action_executor import execute_actions
@@ -25,8 +28,17 @@ from logger import ACTIONS_LOG_PATH, log_action
 from post_selector import list_candidate_posts
 from reports.weekly_summary import summarize
 
+try:
+    from PIL import Image, ImageTk
+    _PIL_AVAILABLE = True
+except ImportError:
+    _PIL_AVAILABLE = False
+
 MAX_LOG_ROWS = 50
 RUN_TIMEOUT_SECONDS = 180
+THUMBNAIL_TIMEOUT_SECONDS = 8
+THUMBNAIL_SIZE = (150, 150)
+POST_CARD_COLUMNS = 3
 
 CRITICAL_STATUS_FIELDS = ["DRY_RUN", "KILL_SWITCH", "AUTOMATION_MODE"]
 INFO_STATUS_FIELDS = ["CAMPAIGN_OBJECTIVE", "META_AD_ACCOUNT_ID", "META_MOCK_MODE", "IG_MOCK_MODE"]
@@ -54,6 +66,34 @@ def read_recent_log_entries(limit: int = MAX_LOG_ROWS) -> list[dict]:
     except FileNotFoundError:
         return []
     return list(reversed(entries))[:limit]
+
+
+def _download_thumbnail_bytes(post: dict) -> bytes | None:
+    """VIDEO gönderiler için thumbnail_url (statik kapak görseli), IMAGE
+    gönderiler için media_url kullanılır — media_url VIDEO'da .mp4 dosyası
+    olduğundan görsel olarak render edilemez."""
+    if not _PIL_AVAILABLE:
+        return None
+    url = post.get("thumbnail_url") if post.get("media_type") == "VIDEO" else post.get("media_url")
+    if not url:
+        return None
+    try:
+        resp = requests.get(url, timeout=THUMBNAIL_TIMEOUT_SECONDS)
+        resp.raise_for_status()
+        return resp.content
+    except Exception:  # noqa: BLE001 — görsel olmadan da kart gösterilebilmeli
+        return None
+
+
+def _make_thumbnail_photo(thumb_bytes: bytes | None):
+    if not thumb_bytes or not _PIL_AVAILABLE:
+        return None
+    try:
+        image = Image.open(io.BytesIO(thumb_bytes))
+        image.thumbnail(THUMBNAIL_SIZE)
+        return ImageTk.PhotoImage(image)
+    except Exception:  # noqa: BLE001 — bozuk/desteklenmeyen görsel formatı olabilir
+        return None
 
 
 class App:
@@ -240,11 +280,15 @@ class App:
         toolbar.pack(fill="x", padx=8, pady=5)
 
         ttk.Button(toolbar, text="⟳ Gönderileri Getir", command=self.fetch_posts).pack(side="left", padx=(0, 5))
+        ttk.Button(toolbar, text="☑ Tümünü Seç", command=self.select_all_posts).pack(side="left", padx=5)
+        ttk.Button(toolbar, text="☐ Seçimi Temizle", command=self.deselect_all_posts).pack(side="left", padx=5)
         self.run_selected_btn = ttk.Button(
             toolbar, text="▶ Seçili Gönderiler İçin Reklam Oluştur",
             command=self.run_selected_posts, state="disabled",
         )
         self.run_selected_btn.pack(side="left", padx=5)
+        self.selection_count_label = ttk.Label(toolbar, text="0 gönderi seçili", style="SectionHint.TLabel")
+        self.selection_count_label.pack(side="left", padx=10)
 
         list_container = ttk.Frame(parent)
         list_container.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -418,6 +462,8 @@ class App:
             media = client.get_recent_media(Config.IG_BUSINESS_ACCOUNT_ID)
             insights_by_id = {m["id"]: client.get_media_insights(m["id"]) for m in media}
             posts = list_candidate_posts(media, insights_by_id)
+            for post in posts:
+                post["_thumb_bytes"] = _download_thumbnail_bytes(post)
         except Exception as exc:  # noqa: BLE001 — arayüzde göstermek için genel yakalama
             error = str(exc)
 
@@ -427,6 +473,7 @@ class App:
         for widget in self.posts_list_frame.winfo_children():
             widget.destroy()
         self.post_vars = {}
+        self._post_thumb_images = []  # PhotoImage referanslarını canlı tutmak için (GC'ye karşı)
 
         if error:
             ttk.Label(self.posts_list_frame, text=f"Hata: {error}", foreground="red").pack(
@@ -440,21 +487,70 @@ class App:
             )
             return
 
-        for post in posts:
-            var = tk.BooleanVar(value=False)
-            caption = (post.get("caption") or "(caption yok)").replace("\n", " ")
-            if len(caption) > 90:
-                caption = caption[:90] + "…"
-            label_text = (
-                f"[{post.get('media_type', '?')}] engagement={post['engagement_rate']:.3f} "
-                f"| ♥{post.get('like_count', 0)} 💬{post.get('comments_count', 0)} | {caption}"
-            )
-            ttk.Checkbutton(self.posts_list_frame, text=label_text, variable=var).pack(
-                anchor="w", padx=5, pady=2
-            )
-            self.post_vars[post["id"]] = var
+        if not _PIL_AVAILABLE:
+            ttk.Label(
+                self.posts_list_frame,
+                text="(Görsel önizleme için 'pip install Pillow' gerekiyor — şimdilik görselsiz gösteriliyor.)",
+                foreground="#b8860b",
+            ).grid(row=0, column=0, columnspan=POST_CARD_COLUMNS, sticky="w", padx=5, pady=(0, 6))
+            header_offset = 1
+        else:
+            header_offset = 0
+
+        for i, post in enumerate(posts):
+            row, col = divmod(i, POST_CARD_COLUMNS)
+            self._build_post_card(post, row + header_offset, col)
 
         self.run_selected_btn.config(state="normal")
+        self._update_selection_count()
+
+    def _build_post_card(self, post: dict, row: int, col: int):
+        card = ttk.Frame(self.posts_list_frame, relief="groove", borderwidth=1, padding=8)
+        card.grid(row=row, column=col, padx=6, pady=6, sticky="n")
+
+        photo = _make_thumbnail_photo(post.get("_thumb_bytes"))
+        if photo is not None:
+            self._post_thumb_images.append(photo)
+            tk.Label(card, image=photo).pack()
+        else:
+            tk.Label(
+                card, text="🖼", font=("Segoe UI", 28), width=9, height=4,
+                background="#e5e5e5", relief="flat",
+            ).pack()
+
+        type_icon = "🎬" if post.get("media_type") == "VIDEO" else "🖼"
+        ttk.Label(
+            card, text=f"{type_icon} engagement {post['engagement_rate']:.3f}",
+            font=("Segoe UI", 8, "bold"),
+        ).pack(anchor="w", pady=(6, 0))
+        ttk.Label(
+            card, text=f"♥ {post.get('like_count', 0)}   💬 {post.get('comments_count', 0)}",
+            font=("Segoe UI", 8),
+        ).pack(anchor="w")
+
+        caption = (post.get("caption") or "(caption yok)").replace("\n", " ")
+        if len(caption) > 70:
+            caption = caption[:70] + "…"
+        ttk.Label(card, text=caption, wraplength=170, justify="left", font=("Segoe UI", 8)).pack(
+            anchor="w", pady=(2, 6)
+        )
+
+        var = tk.BooleanVar(value=False)
+        var.trace_add("write", lambda *_: self._update_selection_count())
+        ttk.Checkbutton(card, text="Reklam için seç", variable=var).pack(anchor="w")
+        self.post_vars[post["id"]] = var
+
+    def select_all_posts(self):
+        for var in self.post_vars.values():
+            var.set(True)
+
+    def deselect_all_posts(self):
+        for var in self.post_vars.values():
+            var.set(False)
+
+    def _update_selection_count(self):
+        selected = sum(1 for var in self.post_vars.values() if var.get())
+        self.selection_count_label.config(text=f"{selected} gönderi seçili")
 
     def run_selected_posts(self):
         selected_ids = [media_id for media_id, var in self.post_vars.items() if var.get()]

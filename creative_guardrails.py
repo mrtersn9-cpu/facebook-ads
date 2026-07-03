@@ -81,7 +81,9 @@ def _count_campaigns_created_today() -> int:
                 count += 1
 
     return count
-def apply_creative_guardrails(creatives: list[dict]) -> tuple[list[dict], list[dict]]:
+def apply_creative_guardrails(
+    creatives: list[dict], run_limit_override: int | None = None
+) -> tuple[list[dict], list[dict]]:
     """Creative önerilerini onaylanan/reddedilen olarak ikiye ayırır.
 
     - Yasaklı ifade içeren creative'ler reddedilir (rejection_reason ile).
@@ -89,6 +91,12 @@ def apply_creative_guardrails(creatives: list[dict]) -> tuple[list[dict], list[d
       sadece bu run'da işlenmeyecek şekilde reddedilir.
     - Bugün zaten MAX_NEW_CAMPAIGNS_PER_DAY'e ulaşılmışsa
       CreativeGuardrailViolation fırlatılır ve hiçbir creative onaylanmaz.
+    - `run_limit_override`: insan panelden belirli gönderileri elle seçtiğinde
+      (otomatik top-N seçimi değil) run başına limiti bu sayıya yükseltmek
+      için kullanılır — insan zaten her birini tek tek gözden geçirip
+      seçtiği için MAX_NEW_CAMPAIGNS_PER_RUN'ın konservatif varsayılanı
+      burada uygulanmaz. MAX_NEW_CAMPAIGNS_PER_DAY yine de üst sınır olarak
+      geçerlidir (fail-closed davranış korunur).
     """
     already_today = _count_campaigns_created_today()
     if already_today >= Config.MAX_NEW_CAMPAIGNS_PER_DAY:
@@ -99,7 +107,8 @@ def apply_creative_guardrails(creatives: list[dict]) -> tuple[list[dict], list[d
         )
 
     remaining_today = Config.MAX_NEW_CAMPAIGNS_PER_DAY - already_today
-    run_limit = min(Config.MAX_NEW_CAMPAIGNS_PER_RUN, remaining_today)
+    configured_run_limit = run_limit_override if run_limit_override is not None else Config.MAX_NEW_CAMPAIGNS_PER_RUN
+    run_limit = min(configured_run_limit, remaining_today)
 
     approved: list[dict] = []
     rejected: list[dict] = []

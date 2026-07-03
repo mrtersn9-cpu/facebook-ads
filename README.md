@@ -66,15 +66,21 @@ python desktop_app.py
   komutlarını arka planda (ayrı thread'de, arayüz donmadan) alt süreç
   olarak tetikler — yeni bir kod yolu değil, sadece bir kolaylık katmanı.
   `DRY_RUN=False` iken çalıştırmadan önce ekstra bir uyarı diyaloğu çıkar.
-- Sekmeler: **Gönderi Seç** (Instagram gönderilerini getirip checkbox'larla
-  hangilerine reklam çıkılacağını manuel seçebileceğiniz panel — "Seçili
-  Gönderiler İçin Reklam Oluştur" sadece işaretlediklerinizi
-  `run_creative_pipeline.py --once --media-ids ...` ile işler, otomatik
-  top-N seçimi devre dışı kalır ama guardrail'ler aynen çalışmaya devam
-  eder), **Onay Kuyruğu** (bkz. aşağıdaki "Onay Kuyruğu ve Otomasyon Modu"
-  bölümü — bekleyen her aksiyonu tek tek "Onayla"/"Reddet" ile işleyebilirsiniz),
-  son çalıştırma çıktısı, `logs/actions.jsonl` kayıtları, 7 günlük
-  özet. "Yenile" düğmesiyle güncellenir.
+- Sekmeler: **Gönderi Seç** (Instagram gönderilerini Instagram akışına
+  benzer bir kart ızgarasında gösterir — her kartta küçük görsel/kapak
+  fotoğrafı, caption, beğeni/yorum sayısı ve bir "Reklam için seç"
+  checkbox'ı vardır; "Tümünü Seç"/"Seçimi Temizle" ile toplu işlem
+  yapılabilir. "Seçili Gönderiler İçin Reklam Oluştur" işaretlediğiniz
+  **gönderilerin hepsi için** (otomatik top-N/run limiti devreye
+  girmeden) `run_creative_pipeline.py --once --media-ids ...` çalıştırır;
+  guardrail'ler (aşağıdaki "Kampanya/Reklam Oluşturma" bölümüne bakın)
+  aynen çalışmaya devam eder, sadece run başına sayı sınırı seçtiğiniz
+  sayıya göre ayarlanır. Görsel önizleme `Pillow` paketini kullanır — kurulu
+  değilse kartlar görselsiz (yer tutucu ikonla) gösterilir, işlevsellik
+  etkilenmez. **Onay Kuyruğu** (bkz. aşağıdaki "Onay Kuyruğu ve Otomasyon
+  Modu" bölümü — bekleyen her aksiyonu tek tek "Onayla"/"Reddet" ile
+  işleyebilirsiniz), son çalıştırma çıktısı, `logs/actions.jsonl`
+  kayıtları, 7 günlük özet. "Yenile" düğmesiyle güncellenir.
 
 Tarayıcı tabanlı bir alternatif isterseniz `web_ui.py` (Flask, sadece
 localhost'ta dinler) de repoda mevcut — aynı salt-okunur/guardrail-bypass-yok
@@ -268,9 +274,26 @@ run_creative_pipeline.py   Ayrı, isteğe bağlı komut: python run_creative_pip
   yazma işlemidir); hatayı ve o ana kadar oluşan obje id'lerini loglar,
   insan manuel temizler. Bir creative'in zinciri başarısız olsa bile
   diğer creative'ler işlenmeye devam eder.
+- **Video/Reels için Facebook eşleşmesi herhangi bir yazma çağrısından ÖNCE
+  doğrulanır:** bir video Facebook Sayfası'na çapraz paylaşılmamışsa (Sayfa
+  feed'inde zaman damgasıyla eşleşen gönderi yoksa), `source_instagram_media_id`
+  ile denemek canlı hesapta güvenilir şekilde başarısız olduğundan
+  (`CampaignBuilderSkip`), o creative için **hiçbir kampanya/ad set
+  oluşturulmadan** atlanır ve `status="skipped"` olarak loglanır — eskiden
+  önce kampanya/ad set oluşturulup creative adımında hata alınıyordu, bu da
+  Ads Manager'da yarım kalmış PAUSED nesneler biriktiriyordu.
 - `run_creative_pipeline.py --once`, ana `main.py` optimizasyon
   döngüsünden **ayrı bir komuttur** ve onunla aynı process'te otomatik
   tetiklenmez — insan bunu bilinçli olarak çalıştırmalıdır.
+- **Panelden elle seçilen gönderiler `MAX_NEW_CAMPAIGNS_PER_RUN`'a
+  takılmaz:** `desktop_app.py`'nin "Gönderi Seç" sekmesinden `--media-ids`
+  ile belirli gönderiler seçildiğinde, run başına limit otomatik olarak
+  seçilen gönderi sayısına yükseltilir (insan zaten her birini gözden
+  geçirip seçtiği için otomatik-seçim akışının konservatif varsayılanı
+  burada uygulanmaz). `MAX_NEW_CAMPAIGNS_PER_DAY` yine de üst sınır olarak
+  kalır — bir günde toplam kaç yeni kampanya oluşabileceğinin nihai
+  guardrail'i budur. Otomatik top-N seçimi bu değişiklikten etkilenmez,
+  hâlâ `MAX_NEW_CAMPAIGNS_PER_RUN`'ın konservatif varsayılanına tabidir.
 - Her yeni `PAUSED` kampanya için (Slack ayarlıysa) "incelemeni bekliyor"
   bildirimi + Ads Manager linki gönderilir.
 

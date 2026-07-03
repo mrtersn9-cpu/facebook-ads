@@ -3,8 +3,10 @@ başarısızlıklarda temizlik denemeden loglayıp devam ettiğini doğrular.
 Gerçek Meta API'ye hiç dokunmaz."""
 import json
 
+import pytest
+
 import config
-from campaign_builder import build_campaign_from_creative, build_campaigns_from_creatives
+from campaign_builder import CampaignBuilderSkip, build_campaign_from_creative, build_campaigns_from_creatives
 from meta_client import MetaAPIError
 
 CREATIVE = {
@@ -138,15 +140,23 @@ def test_video_post_with_matching_page_post_uses_object_story_id(monkeypatch, tm
     assert client.creative_calls == [{"instagram_media_id": None, "object_story_id": "page1_12345"}]
 
 
-def test_video_post_without_match_falls_back_to_instagram_media_id(monkeypatch, tmp_path):
+def test_video_post_without_match_is_skipped_without_any_api_call(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(config.Config, "META_PAGE_ID", "page1")
     client = RecordingCreativeClient(matched_post_id=None)
 
     video_post = {"id": "m1", "media_type": "VIDEO", "timestamp": "2026-06-29T12:25:12+0000"}
-    build_campaign_from_creative(CREATIVE, video_post, client=client)
 
-    assert client.creative_calls == [{"instagram_media_id": "m1", "object_story_id": None}]
+    with pytest.raises(CampaignBuilderSkip):
+        build_campaign_from_creative(CREATIVE, video_post, client=client)
+
+    # source_instagram_media_id ile video reklamı denemek güvenilir şekilde
+    # başarısız olduğundan, hiçbir obje oluşturmaya çalışılmamalı.
+    assert client.calls == []
+    assert client.creative_calls == []
+
+    logged = json.loads((tmp_path / "logs" / "actions.jsonl").read_text(encoding="utf-8").strip())
+    assert logged["status"] == "skipped"
 
 
 def test_image_post_always_uses_instagram_media_id(monkeypatch, tmp_path):
@@ -160,7 +170,7 @@ def test_image_post_always_uses_instagram_media_id(monkeypatch, tmp_path):
     assert client.creative_calls == [{"instagram_media_id": "m1", "object_story_id": None}]
 
 
-def test_video_post_skips_lookup_when_page_id_not_configured(monkeypatch, tmp_path):
+def test_video_post_without_page_id_configured_is_skipped(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(config.Config, "META_PAGE_ID", "")
 
@@ -171,6 +181,27 @@ def test_video_post_skips_lookup_when_page_id_not_configured(monkeypatch, tmp_pa
     client = ExplodingLookupClient()
     video_post = {"id": "m1", "media_type": "VIDEO", "timestamp": "2026-06-29T12:25:12+0000"}
 
-    build_campaign_from_creative(CREATIVE, video_post, client=client)
+    with pytest.raises(CampaignBuilderSkip):
+        build_campaign_from_creative(CREATIVE, video_post, client=client)
 
-    assert client.creative_calls == [{"instagram_media_id": "m1", "object_story_id": None}]
+    assert client.calls == []
+    assert client.creative_calls == []
+
+
+def test_skip_in_batch_is_counted_and_does_not_stop_other_creatives(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config.Config, "META_PAGE_ID", "page1")
+
+    client = RecordingCreativeClient(matched_post_id=None)
+    creatives = [{**CREATIVE, "media_id": "video1"}, {**CREATIVE, "media_id": "image1"}]
+    posts_by_id = {
+        "video1": {"id": "video1", "media_type": "VIDEO", "timestamp": "2026-06-29T12:25:12+0000"},
+        "image1": {"id": "image1", "media_type": "IMAGE"},
+    }
+
+    summary = build_campaigns_from_creatives(creatives, posts_by_id, client=client)
+
+    assert summary["skipped"] == 1
+    assert summary["created"] == 1
+    assert summary["errors"] == 0
+    assert {r["status"] for r in summary["results"]} == {"skipped", "created"}

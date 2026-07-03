@@ -19,6 +19,13 @@ logger = logging.getLogger(__name__)
 CAMPAIGN_ACTION_NAME = "create_campaign_from_creative"
 DEFAULT_TARGETING = {"geo_locations": {"countries": ["TR"]}}
 
+
+class CampaignBuilderSkip(Exception):
+    """Bu creative için güvenli şekilde bir reklam zinciri oluşturulamayacağı
+    (ör. video Facebook'a çapraz paylaşılmamış) belirlendiğinde fırlatılır.
+    Guardrail ihlali değildir — hiçbir obje oluşturulmadan sadece bu creative
+    atlanır, diğer creative'ler etkilenmez."""
+
 # Reklamlar harici bir web sitesine değil, Instagram Direct'e mesaj
 # göndermeye yönlendirir. Meta'nın mesaj CTA'sı yine de bir hedef linki
 # istiyor; Instagram Direct için bu, ig.me deep-link formatıdır
@@ -41,6 +48,48 @@ def build_campaign_from_creative(creative: dict, post: dict, client: MetaClient 
     created: dict = {"media_id": post.get("id")}
     label = creative["headline"][:60]
 
+    # Reels'ler source_instagram_media_id ile canlı hesapta tekrar tekrar
+    # "Instagram Videosunun Facebook'a Yüklenmesi Zorunludur" hatası verdi —
+    # bu yol video için güvenilir değil. Bu yüzden object_story_id'yi HERHANGİ
+    # bir yazma çağrısından (kampanya/ad set oluşturmadan) ÖNCE çözüyoruz;
+    # bulunamazsa hiçbir obje oluşturmadan bu creative'i atlıyoruz (yarım
+    # kalan PAUSED kampanya/ad set birikmesin diye).
+    object_story_id = None
+    if post.get("media_type") == "VIDEO":
+        if not Config.META_PAGE_ID or not post.get("timestamp"):
+            reason = (
+                "META_PAGE_ID ayarlanmamış veya gönderinin zaman damgası yok; video için "
+                "Facebook eşleşmesi doğrulanamadığından güvenli olmayan reklam denemesi atlanıyor."
+            )
+            log_action(
+                {
+                    "adset_id": None,
+                    "action": CAMPAIGN_ACTION_NAME,
+                    "status": "skipped",
+                    "reason": reason,
+                    "details": created,
+                }
+            )
+            raise CampaignBuilderSkip(reason)
+
+        object_story_id = client.find_page_post_id_for_timestamp(Config.META_PAGE_ID, post["timestamp"])
+        if not object_story_id:
+            reason = (
+                "Bu video Facebook Sayfası'na çapraz paylaşılmamış görünüyor (Sayfa feed'inde "
+                "zaman damgasıyla eşleşen gönderi bulunamadı); source_instagram_media_id ile "
+                "reklam oluşturmak güvenilir şekilde başarısız olduğundan atlanıyor."
+            )
+            log_action(
+                {
+                    "adset_id": None,
+                    "action": CAMPAIGN_ACTION_NAME,
+                    "status": "skipped",
+                    "reason": reason,
+                    "details": created,
+                }
+            )
+            raise CampaignBuilderSkip(reason)
+
     try:
         campaign = client.create_campaign(name=f"[Auto] {label}"[:100], objective="OUTCOME_ENGAGEMENT")
         created["campaign_id"] = campaign["id"]
@@ -54,23 +103,6 @@ def build_campaign_from_creative(creative: dict, post: dict, client: MetaClient 
             destination_type=ADSET_DESTINATION_TYPE,
         )
         created["adset_id"] = adset["id"]
-
-        object_story_id = None
-        if post.get("media_type") == "VIDEO" and Config.META_PAGE_ID and post.get("timestamp"):
-            # Reels'ler source_instagram_media_id ile genelde "video Facebook'a
-            # yüklenmemiş" hatası veriyor (canlı hesapta doğrulandı) — Sayfa
-            # feed'inden zaman damgasıyla eşleşen gerçek gönderiyi bulup
-            # object_story_id ile kullanmak gerekiyor.
-            matched_post_id = client.find_page_post_id_for_timestamp(Config.META_PAGE_ID, post["timestamp"])
-            if matched_post_id:
-                object_story_id = matched_post_id
-            else:
-                logger.warning(
-                    "media_id=%s için Sayfa'da eşleşen gönderi bulunamadı; "
-                    "source_instagram_media_id ile denenecek (Facebook'a çapraz "
-                    "paylaşılmamış olabilir).",
-                    post.get("id"),
-                )
 
         ad_creative = client.create_ad_creative(
             name=f"[Auto] {label} - Creative"[:100],
@@ -119,7 +151,7 @@ def build_campaigns_from_creatives(
     diğerlerine devam eder. Dönüş: {"created": n, "errors": n, "results": [...]}
     """
     client = client or MetaClient()
-    summary = {"created": 0, "errors": 0, "results": []}
+    summary = {"created": 0, "errors": 0, "skipped": 0, "results": []}
 
     for creative in creatives:
         post = posts_by_media_id.get(creative["media_id"], {"id": creative["media_id"]})
@@ -127,6 +159,9 @@ def build_campaigns_from_creatives(
             created = build_campaign_from_creative(creative, post, client=client)
             summary["created"] += 1
             summary["results"].append({"status": "created", **created})
+        except CampaignBuilderSkip as exc:
+            summary["skipped"] += 1
+            summary["results"].append({"status": "skipped", "media_id": creative["media_id"], "reason": str(exc)})
         except MetaAPIError:
             summary["errors"] += 1
             summary["results"].append({"status": "error", "media_id": creative["media_id"]})

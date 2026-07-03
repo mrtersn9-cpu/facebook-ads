@@ -135,6 +135,32 @@ def test_rejected_or_error_status_entries_do_not_count(monkeypatch, tmp_path):
     assert approved == [CREATIVE]
 
 
+def test_run_limit_override_allows_more_than_configured_per_run_limit(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config.Config, "MAX_NEW_CAMPAIGNS_PER_RUN", 1)
+    monkeypatch.setattr(config.Config, "MAX_NEW_CAMPAIGNS_PER_DAY", 10)
+
+    creatives = [{**CREATIVE, "media_id": f"m{i}"} for i in range(3)]
+
+    approved, rejected = apply_creative_guardrails(creatives, run_limit_override=3)
+
+    assert len(approved) == 3
+    assert rejected == []
+
+
+def test_run_limit_override_still_capped_by_daily_limit(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(config.Config, "MAX_NEW_CAMPAIGNS_PER_RUN", 1)
+    monkeypatch.setattr(config.Config, "MAX_NEW_CAMPAIGNS_PER_DAY", 2)
+
+    creatives = [{**CREATIVE, "media_id": f"m{i}"} for i in range(3)]
+
+    approved, rejected = apply_creative_guardrails(creatives, run_limit_override=3)
+
+    assert len(approved) == 2  # günlük limit hâlâ üst sınır
+    assert len(rejected) == 1
+
+
 def test_no_log_file_means_zero_campaigns_today(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(config.Config, "MAX_NEW_CAMPAIGNS_PER_RUN", 5)

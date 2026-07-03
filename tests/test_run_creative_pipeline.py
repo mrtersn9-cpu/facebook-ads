@@ -85,3 +85,58 @@ def test_kill_switch_skips_everything(monkeypatch):
     monkeypatch.setattr(pipeline, "IGClient", boom)
 
     pipeline.run_once(media_ids=["1"])  # patlamamalı
+
+
+def _fake_creative_for(post):
+    return {
+        "media_id": post["id"],
+        "primary_text": "t",
+        "headline": "h",
+        "description": "d",
+        "reasoning": "r",
+    }
+
+
+def test_manual_selection_overrides_run_limit_to_selection_count(monkeypatch):
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(pipeline, "generate_creatives", lambda posts: [_fake_creative_for(p) for p in posts])
+
+    guardrail_calls = {}
+
+    def fake_apply_creative_guardrails(creatives, run_limit_override=None):
+        guardrail_calls["run_limit_override"] = run_limit_override
+        return creatives, []
+
+    monkeypatch.setattr(pipeline, "apply_creative_guardrails", fake_apply_creative_guardrails)
+    monkeypatch.setattr(
+        pipeline, "build_campaigns_from_creatives",
+        lambda creatives, posts_by_id: {"created": len(creatives), "errors": 0, "skipped": 0, "results": []},
+    )
+
+    pipeline.run_once(media_ids=["1", "3"])
+
+    assert guardrail_calls["run_limit_override"] == 2  # 3 tane değil, sadece bulunan 2 gönderi seçildi
+
+
+def test_automatic_selection_does_not_override_run_limit(monkeypatch):
+    _patch_common(monkeypatch)
+    monkeypatch.setattr(config.Config, "IG_TOP_N_POSTS", 2)
+    monkeypatch.setattr(config.Config, "IG_MIN_POST_AGE_HOURS", 0)
+    monkeypatch.setattr(config.Config, "IG_ONLY_VIDEO_POSTS", False)
+    monkeypatch.setattr(pipeline, "generate_creatives", lambda posts: [_fake_creative_for(p) for p in posts])
+
+    guardrail_calls = {}
+
+    def fake_apply_creative_guardrails(creatives, run_limit_override=None):
+        guardrail_calls["run_limit_override"] = run_limit_override
+        return creatives, []
+
+    monkeypatch.setattr(pipeline, "apply_creative_guardrails", fake_apply_creative_guardrails)
+    monkeypatch.setattr(
+        pipeline, "build_campaigns_from_creatives",
+        lambda creatives, posts_by_id: {"created": len(creatives), "errors": 0, "skipped": 0, "results": []},
+    )
+
+    pipeline.run_once(media_ids=None)
+
+    assert guardrail_calls["run_limit_override"] is None

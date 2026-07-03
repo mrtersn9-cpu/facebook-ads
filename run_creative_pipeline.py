@@ -60,6 +60,7 @@ def run_once(media_ids: list[str] | None = None) -> None:
 
     insights_by_id = {m["id"]: client.get_media_insights(m["id"]) for m in media}
 
+    run_limit_override = None
     if media_ids:
         wanted = set(media_ids)
         top_posts = [
@@ -73,6 +74,10 @@ def run_once(media_ids: list[str] | None = None) -> None:
         if not top_posts:
             print("Belirtilen gönderi ID'lerinden hiçbiri bulunamadı.")
             return
+        # Panelden elle seçilen gönderiler için MAX_NEW_CAMPAIGNS_PER_RUN'ın
+        # konservatif varsayılanı uygulanmaz — insan zaten her birini gözden
+        # geçirip seçti. MAX_NEW_CAMPAIGNS_PER_DAY yine de üst sınır olarak kalır.
+        run_limit_override = len(top_posts)
     else:
         top_posts = select_top_posts(media, insights_by_id)
         if not top_posts:
@@ -85,7 +90,7 @@ def run_once(media_ids: list[str] | None = None) -> None:
         return
 
     try:
-        approved, rejected = apply_creative_guardrails(creatives)
+        approved, rejected = apply_creative_guardrails(creatives, run_limit_override=run_limit_override)
     except CreativeGuardrailViolation as exc:
         print(f"[CREATIVE GUARDRAIL IHLALI] {exc}")
         log_action(
@@ -121,7 +126,7 @@ def run_once(media_ids: list[str] | None = None) -> None:
         "Creative pipeline özeti: "
         f"aday_gönderi={len(top_posts)}, üretilen_creative={len(creatives)}, "
         f"guardrail_red={len(rejected)}, oluşturulan={summary['created']}, "
-        f"hata={summary['errors']}"
+        f"atlanan={summary.get('skipped', 0)}, hata={summary['errors']}"
     )
 
 

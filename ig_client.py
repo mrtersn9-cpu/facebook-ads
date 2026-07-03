@@ -25,7 +25,7 @@ RATE_LIMIT_ERROR_CODES = {4, 17, 32, 613}
 
 FIXTURES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 
-MEDIA_FIELDS = "id,caption,media_type,media_url,permalink,timestamp,like_count,comments_count"
+MEDIA_FIELDS = "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count"
 # Not: eski tekil "engagement" metriği deprecated; reach + saved (+ like/comments
 # zaten media alanlarında var) ile kendi engagement rate'imizi hesaplıyoruz.
 INSIGHTS_METRICS = "reach,saved"

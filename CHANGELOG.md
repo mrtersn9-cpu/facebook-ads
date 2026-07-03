@@ -250,3 +250,44 @@ hepsi onay kuyruğuna düşer. Eski davranışı korumak isteyenler `.env`'e
 168 → 174 test (approval_queue, decision_engine confidence/brand-context,
 main.py AUTOMATION_MODE dallanması, notifier.notify_queued_for_approval,
 creative_guardrails eğitim sektörü ifadeleri) eklendi, tam suite yeşil.
+
+## Fix — Facebook'a çapraz paylaşılmamış videolar artık atlanıyor, panelden seçilen gönderilerin hepsi işleniyor (2026-07-03)
+Kullanıcı canlı hesapta tekrar aynı hatayla karşılaştı: "Instagram
+Videosunun Facebook'a Yüklenmesi Zorunludur" (subcode 1815279). Kök neden
+zaten biliniyordu (bkz. yukarıdaki "Reels için gerçek Facebook post
+eşleştirmesi" notu) ama `campaign_builder.py` eşleşme bulunamadığında yine
+de `source_instagram_media_id` ile denemeye devam ediyordu — bu deneme
+canlı hesapta güvenilir şekilde başarısız oluyor ve üstüne üstlük kampanya
++ ad set zaten oluşturulmuş oluyordu (yarım kalmış PAUSED nesne birikimi).
+
+Düzeltildi: `campaign_builder.py`'ye `CampaignBuilderSkip` istisnası
+eklendi. Video gönderiler için Facebook Sayfası eşleşmesi artık **herhangi
+bir yazma çağrısından önce** çözülüyor; eşleşme yoksa (veya `META_PAGE_ID`
+ayarlı değilse) hiçbir kampanya/ad set oluşturulmadan bu creative
+`status="skipped"` olarak loglanıp atlanıyor, diğer creative'ler etkilenmeden
+işlenmeye devam ediyor. Kullanıcıya önerilen çözüm: reklamı çıkmak istediğiniz
+Reels'lerin Facebook Sayfası'na da çapraz paylaşılmış olması gerekiyor —
+paylaşılmamışsa bot artık sessizce/güvenli şekilde atlıyor.
+
+Ayrıca kullanıcı, panelden 3 gönderi seçtiğinde sadece 1'ine reklam
+çıkıldığını bildirdi — sebep `MAX_NEW_CAMPAIGNS_PER_RUN=1`'in otomatik
+top-N akışıyla aynı şekilde manuel seçime de uygulanmasıydı.
+`creative_guardrails.apply_creative_guardrails()`'a `run_limit_override`
+parametresi eklendi; `run_creative_pipeline.py` panelden `--media-ids` ile
+elle seçim geldiğinde run limitini seçilen gönderi sayısına yükseltiyor
+(insan zaten her birini gözden geçirip seçtiği için). `MAX_NEW_CAMPAIGNS_PER_DAY`
+değişmeden üst sınır olarak kalıyor — otomatik seçim akışı bu değişiklikten
+etkilenmiyor, hâlâ konservatif varsayılana tabi.
+
+`desktop_app.py`'nin "Gönderi Seç" sekmesi Instagram akışına benzer bir
+kart ızgarasına dönüştürüldü (`Pillow` ile küçük görsel/kapak fotoğrafı,
+caption, beğeni/yorum sayısı, seçim checkbox'ı; "Tümünü Seç"/"Seçimi
+Temizle" toplu işlem düğmeleri; "N gönderi seçili" sayacı). `Pillow`
+kurulu değilse kartlar görselsiz gösterilir, işlevsellik etkilenmez.
+`ig_client.py`'nin `MEDIA_FIELDS`'ına `thumbnail_url` eklendi (video
+kapak görseli için — `media_url` video için .mp4 dosyasıdır, görsel olarak
+render edilemez).
+
+174 → 179 test eklendi (campaign_builder skip senaryoları,
+creative_guardrails run_limit_override, run_creative_pipeline manuel
+seçim/otomatik seçim ayrımı), tam suite yeşil.
